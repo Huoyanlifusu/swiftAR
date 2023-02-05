@@ -55,29 +55,30 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     var sessionIDObservation: NSKeyValueObservation?
 
     
+    //some conditional variable
+    var couldCollectFeature: Bool = false
+    
     //some mathematical data
     var camera: ARCamera?
-    var eularAngle: simd_float3?
     var worldPosition: simd_float4x4?
-    var MePointPeerVector: simd_float3?
-    var peerPosToHisWorld: simd_float3?
+    var objPos: simd_float4?
     
-    var eulerangleForSending: simd_float4?
-    var peerEulerangle: simd_float4?
+    var peerTrans: simd_float4x4?
+    var anchorFromPeer: ARAnchor?
     
-    var calculatedOriginRelativeDistance: Bool = false
-    
-    //没用到
-    var impactFeedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
-    
-    //math concerning variable
-    var rollDegree: Float?
-    var yawDegree: Float?
+    var eularAngle: simd_float3?
+    var eulerangleForSending: simd_float3?
+    var peerEulerangle: simd_float3?
+    var peerPos: simd_float4?
     
     //var couldCreateObj: Bool = true
     var peerAnchor: ARAnchor?
-    var alreadyAdd = false
+    var peerDirection: simd_float3?
+    var peerDistance: Float?
     
+    //Bool variables
+    var alreadyAdd = false
+    var couldDetect = true
     
     
     //viewdidload happen before viewdidappear
@@ -103,14 +104,16 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         //start ar session
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
-        configuration.isCollaborationEnabled = true
+        configuration.initialWorldMap = nil
+        configuration.isCollaborationEnabled = false
         configuration.userFaceTrackingEnabled = false
         configuration.environmentTexturing = .automatic
         configuration.planeDetection = [.horizontal, .vertical]
         sceneView.session.run(configuration)
         print("AR Session Started!")
         
-        sceneView.debugOptions = ARSCNDebugOptions.showFeaturePoints
+        //show feature points in ar experience, usually not used
+        //sceneView.debugOptions = ARSCNDebugOptions.showFeaturePoints
         
         setupCoachingOverlay()
         
@@ -138,7 +141,9 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         }
         
         if mpc == nil {
-            infoLabel.text = "Discovering Peer ..."
+            DispatchQueue.main.async {
+                self.infoLabel.text = "Discovering Peer ..."
+            }
             startupMPC()
             currentState = .unknown
         }
@@ -180,10 +185,11 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             
             // set config
             let configuration = NINearbyPeerConfiguration(peerToken: peerToken)
-            // configuration.isCameraAssistanceEnabled = true
+            configuration.isCameraAssistanceEnabled = true
         
             //run session
             niSession?.run(configuration)
+            niSession?.setARSession(sceneView.session)
             print("welldone")
             
             
@@ -209,8 +215,11 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         connectedPeer = peer
         peerDisplayName = peer.displayName
         
-        infoLabel.text = "已连接"
-        deviceLable.text = "链接对象:" + peerDisplayName!
+        
+        DispatchQueue.main.async {
+            self.infoLabel.text = "已连接"
+            self.deviceLable.text = "链接对象:" + peer.displayName
+        }
     }
     
     //handle to disconnect
@@ -226,7 +235,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true) else {
             fatalError("cannot encode your token")
         }
-        mpc?.sendDataToAllPeers(data: data)
+        self.mpc?.sendDataToAllPeers(data: data)
         sharedTokenWithPeers = true
     }
     
@@ -247,18 +256,21 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     //NISessionDelegate Monitoring NearbyObjects
     func session(_ session: NISession, didUpdate nearbyObjects: [NINearbyObject]) {
-        guard let peerToken = peerDiscoveryToken else {
-            fatalError("don't have peer token")
+        //当处理数据时停止实时测量
+        if couldDetect == true {
+            
+            guard let peerToken = peerDiscoveryToken else {
+                fatalError("don't have peer token")
+            }
+            let nearbyOject = nearbyObjects.first { (obj) -> Bool in
+                return obj.discoveryToken == peerToken
+            }
+            guard let nearbyObjectUpdate = nearbyOject else {
+                return
+            }
+            peerTrans = session.worldTransform(for: nearbyObjectUpdate)
+            visualisationUpdate(with: nearbyObjectUpdate)
         }
-        let nearbyOject = nearbyObjects.first { (obj) -> Bool in
-            return obj.discoveryToken == peerToken
-        }
-        guard let nearbyObjectUpdate = nearbyOject else {
-            return
-        }
-        
-        visualisationUpdate(with: nearbyObjectUpdate)
-
     }
     
     
@@ -304,30 +316,47 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         }
     }
     
+    
+    
+    var count: Int = 0
     //monitoring 30fps update
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        
+        if couldCollectFeature {
+            collectData(with: frame)
+            count += 1
+        }
+        
+        if count == Constants.frameNum {
+            couldCollectFeature = false
+            count = 0
+            print("Over")
+        }
+        
+        if couldDetect == false { return }
+        
+//        let ciImage = CIImage(cvPixelBuffer: frame.capturedImage)
+//        let uiImage = UIImage(ciImage: ciImage)
+        camera = frame.camera
         let eularAngles = frame.camera.eulerAngles
         eularAngle = eularAngles
-        eularangleLabel.text = "x分量 " + String(format: "%.2f", eularAngles.x) + " "
-                                + "y分量 " + String(format: "%.2f", eularAngles.y) + " "
-        + "z分量 " + String(format: "%.2f", eularAngles.z)
+        worldPosition = camera?.transform
         
-        if let worldPositions = session.currentFrame?.camera.transform {
-            worldPosition = worldPositions
-            let x: Float = worldPositions.columns.3.x
-            let y: Float = worldPositions.columns.3.y
-            let z: Float = worldPositions.columns.3.z
-            worldPositionLabel.text = "WP 东:" + String(format: "%.2f", x)
-                + String("天:") + String(format: "%.2f", y)
-                + String("南:") + String(format: "%.2f", z)
-            sendMyPositionToPeer(with: simd_make_float3(x, y, z))
+        DispatchQueue.main.async {
+            self.eularangleLabel.text = "欧拉角 x " + String(format: "%.2f", eularAngles.x) + " "
+                                    + "y " + String(format: "%.2f", eularAngles.y) + " "
+                                    + "z " + String(format: "%.2f", eularAngles.z)
+            if let worldPositions = session.currentFrame?.camera.transform {
+                let x: Float = worldPositions.columns.3.x
+                let y: Float = worldPositions.columns.3.y
+                let z: Float = worldPositions.columns.3.z
+                self.worldPositionLabel.text = "距离世界原点 x:" + String(format: "%.2f", x)
+                    + String("y:") + String(format: "%.2f", y)
+                    + String("z:") + String(format: "%.2f", z)
+    //            sendMyPositionToPeer(with: simd_make_float3(x, y, z))
+            }
         }
 
-    }
-    
-    func sendMyPositionToPeer(with position: simd_float3) {
-        guard let data = try? JSONEncoder().encode(position) else { return }
-        mpc?.sendDataToAllPeers(data: data)
     }
     
     //ARSessionDelegate Monitoring NearbyObjects
@@ -338,21 +367,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
 //        }
     }
     
-    private func renderAnchor(for anchor: ARAnchor) {
-        guard let camera = sceneView.pointOfView else { return }
-        let transform = anchor.transform
-        let objectNode = loadModel()
-
-        let (min, max) = (objectNode.boundingBox)
-        let w = Float(max.x - min.x)
-        let h = Float(max.y - min.y)
-        objectNode.pivot = SCNMatrix4MakeTranslation(w/2 + min.x, h/2 + min.y, 0)
-        let position = SCNVector3(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
-        objectNode.position = camera.convertPosition(position, to: nil)
-        objectNode.eulerAngles = camera.eulerAngles
-        sceneView.scene.rootNode.addChildNode(objectNode)
-        
-    }
     
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         for anchor in anchors {
@@ -371,49 +385,67 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         if let discoverytoken = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NIDiscoveryToken.self, from: data) {
             peerDidShareDiscoveryToken(peer: peer, token: discoverytoken)
         }
-        if let anchor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARAnchor.self, from: data) {
-            let pos = updateAnchorPosition(for: anchor)
-            var newTrans = anchor.transform
-            newTrans.columns.3 = pos
-//            let transform = updateAnchorOrientation(for: anchor, with: pos)
-            let newAnchor = ARAnchor(name: Constants.ObjectName, transform: newTrans)
-            sceneView.session.add(anchor: newAnchor)
-        }
-        if let position = try? JSONDecoder().decode(simd_float3.self, from: data) {
-            peerPosToHisWorld = position
-        }
-        if let eulerangle = try? JSONDecoder().decode(simd_float4.self, from: data) {
-            peerEulerangle = eulerangle
-            if let eularangle = eularAngle {
-                resetWorldOrigin(with: eularangle, and: peerEulerangle!)
+        if let pos = try? JSONDecoder().decode(simd_float4.self, from: data) {
+            guard let cam = camera else { print("no cam")
+                return }
+            //判别是欧拉角数据还是坐标数据
+            if abs(pos.w - 100) < 1 {
+                let newPose = correctPose(with: simd_make_float3(pos), using: cam.eulerAngles)
+                print("\(newPose)")
+                sceneView.session.setWorldOrigin(relativeTransform: newPose)
             }
+            else {
+                //停止采集数据
+                couldDetect = false
+                
+                //使用NI数据进行两次位姿转换 Pcam->MyCam->MyWorld
+                guard let direction = peerDirection else { couldDetect = true; return }
+                guard let distance = peerDistance else { couldDetect = true; return }
+                let Pos = coordinateAlignment(direction: direction, distance: distance, myCam: cam, peerEuler: peerEulerangle!, pos: pos)
+                
+                
+                var wPos: simd_float4 = simd_float4(0,0,0,0)
+                //使用NI库自带的peer位姿矩阵 和 peercam坐标系坐标 求解世界坐标系坐标
+                guard let peerT = peerTrans else { couldDetect = true; return }
+                if peerT.columns.0 == simd_float4(0,0,0,0) {
+                    let peerR = correctPose(with: peerEulerangle!, using: cam.eulerAngles)
+                    let T = peerT + peerR
+                    wPos = T * pos
+                } else {
+                    wPos = peerT * pos
+                }
+                
+                
+                //添加ar物体
+                guard let anchor = anchorFromPeer else { couldDetect = true; return }
+                print("all condition meet")
+                var trans = anchor.transform
+                trans.columns.3 = wPos
+                let newAnchor = ARAnchor(name: Constants.ObjectName, transform: trans)
+                addAnchor(anchor: newAnchor)
+                couldDetect = true
+                
+                DispatchQueue.main.async {
+                    //显示世界坐标系坐标位置
+                    print("posfromarithmatic:\(Pos)")
+                    print("posfromuwbmeasure:\(wPos)")
+                }
+                
+            }
+        }
+        if let anchor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARAnchor.self, from: data) {
+            anchorFromPeer = anchor
+        }
+        if let eulerangle = try? JSONDecoder().decode(simd_float3.self, from: data) {
+            peerEulerangle = eulerangle
+            //resetWorldOrigin(with: eularangle, and: peerEulerangle)
         }
     }
     
-    func resetWorldOrigin(with myEuler: simd_float3, and peerEuler: simd_float4) {
+    func resetWorldOrigin(with myEuler: simd_float3, and peerEuler: simd_float3) {
         let newWorldTransform = correctPose(with: peerEuler, using: myEuler)
         sceneView.session.setWorldOrigin(relativeTransform: newWorldTransform)
     }
-    
-    //update anchor position
-    func updateAnchorPosition(for anchor: ARAnchor) -> simd_float4 {
-        //现在求myworld-obj向量 = myworld-mycam + mycam-peercam + peercam-peerworld + peerworld-obj
-        if let Vpp = MePointPeerVector, let Vpo = worldPosition, let Vpw = peerPosToHisWorld {
-            let newPosition: simd_float4 = simd_make_float4(Vpo.columns.3.x + Vpp.x + anchor.transform.columns.3.x - Vpw.x,
-                                                            Vpo.columns.3.y + Vpp.y + anchor.transform.columns.3.y - Vpw.y,
-                                                            Vpo.columns.3.z + Vpp.z + anchor.transform.columns.3.z - Vpw.z,
-                                                            1)
-            return newPosition
-        }
-        else {
-            return anchor.transform.columns.3
-        }
-    }
-    
-    //update anchor orientation
-//    func updateAnchorOrientation(for anchor: ARAnchor, with pos: simd_float4) -> simd_float4x4 {
-//        return
-//    }
     
     func addAnchor(anchor: ARAnchor) {
         sceneView.session.add(anchor: anchor)
@@ -444,9 +476,10 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             // Create a valid configuration.
             startup()
         }
-        
-        infoLabel.text = "已连接"
-        infoLabel.text = "链接对象" + peerDisplayName!
+        DispatchQueue.main.async {
+            self.infoLabel.text = "已连接"
+            self.infoLabel.text = "链接对象" + self.peerDisplayName!
+        }
     }
     
     //Hit test function
@@ -464,16 +497,21 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             else {
                 return
             }
-            //if couldCreateObj {
-                let anchor = ARAnchor(name: Constants.ObjectName, transform: result.worldTransform)
-                sceneView.session.add(anchor: anchor)
-                
-                //send anchor data
-                guard let data = try? NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
-                else { fatalError("can't encode anchor") }
-                self.mpc?.sendDataToAllPeers(data: data)
-                //couldCreateObj = false
-            //}
+            
+            let anchor = ARAnchor(name: Constants.ObjectName, transform: result.worldTransform)
+            sceneView.session.add(anchor: anchor)
+            guard let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
+            else { fatalError("can't encode anchor") }
+            //send anchor data
+            self.mpc?.sendDataToAllPeers(data: anchorData)
+            
+            guard let cam = camera else { return }
+            guard let eulerData = try? JSONEncoder().encode(cam.eulerAngles) else { fatalError("dont have your cam") }
+            self.mpc?.sendDataToAllPeers(data: eulerData)
+            
+            let pos = cam.transform.inverse * result.worldTransform.columns.3
+            guard let posData = try? JSONEncoder().encode(pos) else { fatalError("cannot encode simd_float3x3") }
+            self.mpc?.sendDataToAllPeers(data: posData)
         }
     }
     
@@ -520,53 +558,45 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     //update visualization information
     func visualisationUpdate(with peer: NINearbyObject) {
         // Animate into the next visuals.
-        UIView.animate(withDuration: 0.3, animations: {
-            self.animate(with: peer)
-        })
-    }
-    
-    func animate(with peer: NINearbyObject) {
         guard let direction = peer.direction else { return }
+        peerDirection = direction
         guard let distance = peer.distance else { return }
-
-        distanceLabel.text = "距离:" + String(format: "%.2f", distance)
-        directionLabel.text = "方向 x:" + String(format: "%.2f", direction.x) + " "
-        + "y:" + String(format: "%.2f", direction.y) + " "
-        + "z:" + String(format: "%.2f", direction.z)
+        peerDistance = distance
         
-        CoordinateAlignment(direction, distance)
+        DispatchQueue.main.async {
+            self.distanceLabel.text = "距离:" + String(format: "%.2f", distance)
+            self.directionLabel.text = "方向 x:" + String(format: "%.2f", direction.x) + " "
+            + "y:" + String(format: "%.2f", direction.y) + " "
+            + "z:" + String(format: "%.2f", direction.z)
+        }
+        
+        guard let transform = niSession?.worldTransform(for: peer) else { return }
+        peerTrans = transform
     }
     
     
     //NI的方向数据
     func updateCameraCoordinateRelativePositionLabel(_ direction: SCNVector3) {
-        cameraCoordinateRelativePositionLabel.text = String("East:") + String(format: "%.2f", direction.x)
-        + String("Up:") + String(format: "%.2f", direction.y)
-        + String("South:") + String(format: "%.2f", direction.z)
+        DispatchQueue.main.async {
+            self.cameraCoordinateRelativePositionLabel.text = String("East:") + String(format: "%.2f", direction.x)
+            + String("Up:") + String(format: "%.2f", direction.y)
+            + String("South:") + String(format: "%.2f", direction.z)
+        }
     }
     
     
-    //AR/NI坐标系校准
-    func CoordinateAlignment(_ direction: simd_float3, _ distance: Float) {
-        guard let eularAngle = eularAngle else { return }
-        let worldRelativePosition = coordinateAlignment(eularAngle: eularAngle, direction: direction, distance: distance)
-        MePointPeerVector = worldRelativePosition
-        worldRelativePositionLabel.text = String("E:") + String(format: "%.2f", worldRelativePosition.x)
-                                        + String("U:") + String(format: "%.2f", worldRelativePosition.y)
-                                        + String("S:") + String(format: "%.2f", worldRelativePosition.z)
-    }
-    
-    
-    
-    //放置世界原点(废弃)
     @IBAction func setWorldOrigin(_ sender: Any) {
-        eulerangleForSending = simd_float4(eularAngle!, 0)
-        guard let data = try? JSONEncoder().encode(eulerangleForSending) else {
+        guard let cam = camera else { return }
+        let euler = simd_make_float4(cam.eulerAngles, 100)
+        guard let data = try? JSONEncoder().encode(euler) else {
             print("cannot encode your eulerangle!")
             return
         }
-        mpc?.sendDataToAllPeers(data: data)
+        self.mpc?.sendDataToAllPeers(data: data)
     }
+    
+    
+    
     
     func addCoordinateAnchor(using anchorName: String, with transform: simd_float4x4) {
         let coordinate = ARAnchor(name: anchorName, transform: transform)
@@ -626,6 +656,20 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
 //            print("no distance data")
 //        }
     
+    
+    
+    
+    
+    
+    
+    @IBAction func collectFeature(_ sender: Any) {
+        
+        couldCollectFeature = true
+    }
+    
+    
+    
+    
     //use button to reset tracking
     @IBAction func resetTracking(_ sender: UIButton?) {
         let configuration = ARWorldTrackingConfiguration()
@@ -662,37 +706,34 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         //couldCreateObj = true
     }
     
-    private func sendARSessionIDTo(peers: [MCPeerID]) {
-        guard let multipeerSession = mpc else { return }
-        let idString = sceneView.session.identifier.uuidString
-        let command = "SessionID:" + idString
-        if let commandData = command.data(using: .utf8) {
-            multipeerSession.sendDataToAllPeers(data: commandData)
-        }
-    }
-    
-//    func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool {
-//        return false
+//    private func sendARSessionIDTo(peers: [MCPeerID]) {
+//        guard let multipeerSession = mpc else { return }
+//        let idString = sceneView.session.identifier.uuidString
+//        let command = "SessionID:" + idString
+//        if let commandData = command.data(using: .utf8) {
+//            multipeerSession.sendDataToAllPeers(data: commandData)
+//        }
 //    }
+    
+    func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool {
+        return false
+    }
 
 }
 
 struct Constants {
     static let ObjectName = "Object"
     static let distanceThereshold: Float = 0.4
+    static let frameNum: Int = 2
 }
 
-class PosMessage: NSData {
-    var name: String
-    var value: simd_float3
-    
-    init(name: String, value: simd_float3) {
-        self.name = name
-        self.value = value
-        super.init()
+extension simd_float3x3: Codable {
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        try self.init(diagonal: container.decode(SIMD3<Float>.self))
     }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-}
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        try container.encode([columns.0, columns.1, columns.2])
+     }
+ }

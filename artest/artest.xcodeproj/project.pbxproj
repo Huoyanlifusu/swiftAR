@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		53143037296B1CDD00734825 /* NISessionDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53143036296B1CDD00734825 /* NISessionDelegate.swift */; };
+		53B17B752982F40F00D8D14D /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53E7155C28DC6B2B001921D5 /* ViewController.swift */; };
 		53B5CCA928E5B43F006A4D5E /* Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B5CCA828E5B43F006A4D5E /* Utilities.swift */; };
 		53C5EC4F28EF290100DAFF45 /* worldmap.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 53C5EC4E28EF290000DAFF45 /* worldmap.jpg */; };
 		53D3338A28F6822500DC24B9 /* ViewController+CoachingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53D3338928F6822500DC24B9 /* ViewController+CoachingOverlay.swift */; };
@@ -114,6 +115,7 @@
 		53143035296B1CAB00734825 /* Delegate */ = {
 			isa = PBXGroup;
 			children = (
+				53E7158828DC7AE9001921D5 /* MPCSession.swift */,
 				53E7155828DC6B2B001921D5 /* AppDelegate.swift */,
 				53E7155A28DC6B2B001921D5 /* SceneDelegate.swift */,
 				53143036296B1CDD00734825 /* NISessionDelegate.swift */,
@@ -149,7 +151,6 @@
 				53143035296B1CAB00734825 /* Delegate */,
 				53143033296B1C7900734825 /* Views */,
 				53143034296B1C9300734825 /* Utilities */,
-				53E7158828DC7AE9001921D5 /* MPCSession.swift */,
 				53E7155E28DC6B2B001921D5 /* Main.storyboard */,
 				53E7156128DC6B2C001921D5 /* Assets.xcassets */,
 				53E7156328DC6B2C001921D5 /* LaunchScreen.storyboard */,
@@ -243,6 +244,7 @@
 				TargetAttributes = {
 					53E7155428DC6B2B001921D5 = {
 						CreatedOnToolsVersion = 14.0;
+						LastSwiftMigration = 1420;
 					};
 					53E7156A28DC6B2C001921D5 = {
 						CreatedOnToolsVersion = 14.0;
@@ -332,6 +334,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				53B17B752982F40F00D8D14D /* ViewController.swift in Sources */,
 				53E7157A28DC6B2C001921D5 /* artestUITests.swift in Sources */,
 				53E7157C28DC6B2C001921D5 /* artestUITestsLaunchTests.swift in Sources */,
 			);
@@ -491,9 +494,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Q6MAB65JYN;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = artest/Info.plist;
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "This app needs nearby interaction";
@@ -502,7 +510,7 @@
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -511,6 +519,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = zhangyuyang821.artest;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -521,9 +530,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Q6MAB65JYN;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = artest/Info.plist;
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "This app needs nearby interaction";
@@ -532,7 +546,7 @@
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
