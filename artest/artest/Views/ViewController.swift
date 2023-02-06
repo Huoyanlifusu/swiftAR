@@ -17,11 +17,15 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     //scene
     @IBOutlet weak var sceneView: ARSCNView!
     
-    @IBOutlet weak var infoLabel: UILabel!
+    //some labels
     @IBOutlet weak var deviceLable: UILabel!
     @IBOutlet weak var distanceLabel: UILabel!
-    @IBOutlet weak var resetButton: UIButton!
+    @IBOutlet weak var infoLabel: UILabel!
+    
     @IBOutlet weak var cameraCoordinateRelativePositionLabel: UILabel!
+    
+    //send map button
+    @IBOutlet weak var sendMapButton: UIButton!
     
     @IBOutlet weak var directionLabel: UILabel!
     
@@ -29,7 +33,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     //eularAngle & worldPositionDetail
     @IBOutlet weak var eularangleLabel: UILabel!
     @IBOutlet weak var worldPositionLabel: UILabel!
-    @IBOutlet weak var worldRelativePositionLabel: UILabel!
     
     //some view
     @IBOutlet weak var DetailView: UIView!
@@ -52,10 +55,14 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     var connectedPeer: MCPeerID?
     var peerDisplayName: String?
     var peerSessionIDs = [MCPeerID: String]()
+    
     var sessionIDObservation: NSKeyValueObservation?
+    
 
     
     //some conditional variable
+    var alreadyAdd = false
+    var couldDetect = true
     var couldCollectFeature: Bool = false
     
     //some mathematical data
@@ -75,10 +82,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     var peerAnchor: ARAnchor?
     var peerDirection: simd_float3?
     var peerDistance: Float?
-    
-    //Bool variables
-    var alreadyAdd = false
-    var couldDetect = true
     
     
     //viewdidload happen before viewdidappear
@@ -100,15 +103,15 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
         //set delegate
         sceneView.session.delegate = self
-        
+        sceneView.automaticallyUpdatesLighting = false
         //start ar session
+        
+        
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
-        configuration.initialWorldMap = nil
-        configuration.isCollaborationEnabled = false
-        configuration.userFaceTrackingEnabled = false
+        configuration.isCollaborationEnabled = true
         configuration.environmentTexturing = .automatic
-        configuration.planeDetection = [.horizontal, .vertical]
+        configuration.planeDetection = .horizontal
         sceneView.session.run(configuration)
         print("AR Session Started!")
         
@@ -117,8 +120,17 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
         setupCoachingOverlay()
         
+        
         //disable idletimer cause user may not touch screen for a long time
         UIApplication.shared.isIdleTimerDisabled = true
+        
+        sessionIDObservation = observe(\.sceneView.session.identifier, options: [.new]) { object, change in
+            print("SessionID changed to: \(change.newValue!)")
+            // Tell all other peers about your ARSession's changed ID, so
+            // that they can keep track of which ARAnchors are yours.
+            guard let multipeerSession = self.mpc else { return }
+            self.sendARSessionIDTo(peers: multipeerSession.connectedPeers)
+        }
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -185,7 +197,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             
             // set config
             let configuration = NINearbyPeerConfiguration(peerToken: peerToken)
-            configuration.isCameraAssistanceEnabled = true
+            configuration.isCameraAssistanceEnabled = false
         
             //run session
             niSession?.run(configuration)
@@ -247,11 +259,31 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             node.addChildNode(loadModel())
             return
         }
-        if let name = anchor.name, name == "Coordinate" {
+        
+        if let participantAnchor = anchor as? ARParticipantAnchor {
+            node.addChildNode(loadModel())
+            return
         }
     }
     
     func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+    }
+    
+    func session(_ session: ARSession, didOutputCollaborationData data: ARSession.CollaborationData) {
+        guard let multipeerSession = mpc else { return }
+        if !multipeerSession.connectedPeers.isEmpty {
+            
+            // encodeData of collaborativeData
+            guard let encodedData = try? NSKeyedArchiver.archivedData(withRootObject: data, requiringSecureCoding: true)
+            else { fatalError("Unexpectedly failed to encode collaboration data.") }
+
+            
+            // Use reliable mode if the data is critical, and unreliable mode if the data is optional.
+            let dataIsCritical = data.priority == .critical
+            multipeerSession.sendDataToAllPeers(data: encodedData)
+        } else {
+            print("Deferred sending collaboration to later because there are no peers.")
+        }
     }
     
     //NISessionDelegate Monitoring NearbyObjects
@@ -335,8 +367,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
         if couldDetect == false { return }
         
-//        let ciImage = CIImage(cvPixelBuffer: frame.capturedImage)
-//        let uiImage = UIImage(ciImage: ciImage)
         camera = frame.camera
         let eularAngles = frame.camera.eulerAngles
         eularAngle = eularAngles
@@ -356,15 +386,31 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     //            sendMyPositionToPeer(with: simd_make_float3(x, y, z))
             }
         }
+        
+        guard let multipeer = mpc else { return }
+        
+        switch frame.worldMappingStatus {
+        case .notAvailable, .limited:
+            sendMapButton.isEnabled = false
+        case .extending:
+            sendMapButton.isEnabled = multipeer.connectedPeers.isEmpty
+        case .mapped:
+            sendMapButton.isEnabled = multipeer.connectedPeers.isEmpty
+        @unknown default:
+            sendMapButton.isEnabled = false
+        }
 
     }
     
     //ARSessionDelegate Monitoring NearbyObjects
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
-//        guard let anchor = anchors.last else { return }
-//        if anchor.name == Constants.ObjectName {
-//            renderAnchor(for: anchor)
-//        }
+        for anchor in anchors {
+            if let participantAnchor = anchor as? ARParticipantAnchor {
+                //messageLabel.displayMessage("Established joint experience with a peer.")
+                
+                //add the peer anchor to the session
+                sceneView.session.add(anchor: participantAnchor)
+            }        }
     }
     
     
@@ -379,9 +425,23 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     //handler to connect
 
-    
+    var mapProvider: MCPeerID?
     //handler to data receive
     func dataReceiveHandler(data: Data, peer: MCPeerID) {
+        if let collaborationData = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARSession.CollaborationData.self, from: data) {
+            sceneView.session.update(with: collaborationData)
+        }
+        if let worldmap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data)
+        {
+            let configuration = ARWorldTrackingConfiguration()
+            configuration.initialWorldMap = worldmap
+            configuration.planeDetection = .horizontal
+            
+            sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+            
+            mapProvider = peer
+        }
+        
         if let discoverytoken = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NIDiscoveryToken.self, from: data) {
             peerDidShareDiscoveryToken(peer: peer, token: discoverytoken)
         }
@@ -515,6 +575,18 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         }
     }
     
+    
+    @IBAction func shareSession(_ sender: Any) {
+        sceneView.session.getCurrentWorldMap(completionHandler: {
+            worldmap, error in
+            guard let map = worldmap else { print("Error: \(error!.localizedDescription)"); return }
+            guard let data = try? NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true) else {
+                fatalError("Cannot archive world map!")
+            }
+            self.mpc?.sendDataToAllPeers(data: data)
+        })
+    }
+    
     //get distance&direction state
     func getDistanceDirectionState(from nearbyObject: NINearbyObject) -> DistanceDirectionState {
         if nearbyObject.distance == nil && nearbyObject.direction == nil {
@@ -601,6 +673,51 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     func addCoordinateAnchor(using anchorName: String, with transform: simd_float4x4) {
         let coordinate = ARAnchor(name: anchorName, transform: transform)
         sceneView.session.add(anchor: coordinate)
+    }
+    
+    
+    private func updateSessionInfoLabel(for frame: ARFrame, trackingState: ARCamera.TrackingState) {
+        // Update the UI to provide feedback on the state of the AR experience.
+        let message: String
+        
+        guard let multipeer = mpc else { return }
+        
+        switch trackingState {
+        case .normal where frame.anchors.isEmpty && multipeer.connectedPeers.isEmpty:
+            // No planes detected; provide instructions for this app's AR interactions.
+            message = "Move around to map the environment, or wait to join a shared session."
+            
+        case .normal where multipeer.connectedPeers.isEmpty && mapProvider == nil:
+            let peerNames = multipeer.connectedPeers.map({ $0.displayName }).joined(separator: ", ")
+            message = "Connected with \(peerNames)."
+            
+        case .notAvailable:
+            message = "Tracking unavailable."
+            
+        case .limited(.excessiveMotion):
+            message = "Tracking limited - Move the device more slowly."
+            
+        case .limited(.insufficientFeatures):
+            message = "Tracking limited - Point the device at an area with visible surface detail, or improve lighting conditions."
+            
+        case .limited(.initializing) where mapProvider != nil,
+             .limited(.relocalizing) where mapProvider != nil:
+            message = "Received map from \(mapProvider!.displayName)."
+            
+        case .limited(.relocalizing):
+            message = "Resuming session — move to where you were when the session was interrupted."
+            
+        case .limited(.initializing):
+            message = "Initializing AR session."
+            
+        default:
+            // No feedback needed when tracking is normal and planes are visible.
+            // (Nor when in unreachable limited-tracking states.)
+            message = ""
+            
+        }
+        
+        infoLabel.text = message
     }
     //        self.animated(from: currentState, to: nextState, with: peer)
     
@@ -706,6 +823,16 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         //couldCreateObj = true
     }
     
+    private func sendARSessionIDTo(peers: [MCPeerID]) {
+        guard let multipeerSession = mpc else { return }
+        let idString = sceneView.session.identifier.uuidString
+        let command = "SessionID:" + idString
+        //将字符串类型转为data
+        if let commandData = command.data(using: .utf8) {
+            multipeerSession.sendDataToAllPeers(data: commandData)
+        }
+    }
+    
 //    private func sendARSessionIDTo(peers: [MCPeerID]) {
 //        guard let multipeerSession = mpc else { return }
 //        let idString = sceneView.session.identifier.uuidString
@@ -715,9 +842,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
 //        }
 //    }
     
-    func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool {
-        return false
-    }
 
 }
 
@@ -726,14 +850,3 @@ struct Constants {
     static let distanceThereshold: Float = 0.4
     static let frameNum: Int = 2
 }
-
-extension simd_float3x3: Codable {
-    public init(from decoder: Decoder) throws {
-        var container = try decoder.unkeyedContainer()
-        try self.init(diagonal: container.decode(SIMD3<Float>.self))
-    }
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        try container.encode([columns.0, columns.1, columns.2])
-     }
- }

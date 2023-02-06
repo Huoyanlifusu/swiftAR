@@ -140,8 +140,3 @@ func translation(from matrix: simd_float4x4, with position_diff: simd_float3) ->
     newmatrix.columns.3.z += position_diff.z
     return newmatrix
 }
-
-extension FloatingPoint {
-    var degreeToRadians: Self { self * .pi / 180}
-    var radiansToDegrees: Self { self * 180 / .pi }
-}
