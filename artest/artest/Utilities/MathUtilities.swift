@@ -140,3 +140,11 @@ func translation(from matrix: simd_float4x4, with position_diff: simd_float3) ->
     newmatrix.columns.3.z += position_diff.z
     return newmatrix
 }
+
+func alignDistanceWithNI(distance: Float, direction: simd_float3) -> simd_float4 {
+    let dx: Float = -1 * direction.y * distance //单位 米
+    let dy: Float = direction.x * distance
+    let dz: Float = direction.z * distance
+    let t = simd_float4(dx, dy, dz, 1)
+    return t
+}

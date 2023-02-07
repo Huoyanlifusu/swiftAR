@@ -58,7 +58,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     var sessionIDObservation: NSKeyValueObservation?
     
-
     
     //some conditional variable
     var alreadyAdd = false
@@ -71,6 +70,8 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     var objPos: simd_float4?
     
     var peerTrans: simd_float4x4?
+    var peerTransFromARKit: simd_float4x4?
+    
     var anchorFromPeer: ARAnchor?
     
     var eularAngle: simd_float3?
@@ -153,9 +154,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         }
         
         if mpc == nil {
-            DispatchQueue.main.async {
-                self.infoLabel.text = "Discovering Peer ..."
-            }
+            
             startupMPC()
             currentState = .unknown
         }
@@ -201,7 +200,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
             //run session
             niSession?.run(configuration)
-            niSession?.setARSession(sceneView.session)
             print("welldone")
             
             
@@ -229,7 +227,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
         
         DispatchQueue.main.async {
-            self.infoLabel.text = "已连接"
             self.deviceLable.text = "链接对象:" + peer.displayName
         }
     }
@@ -334,7 +331,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             startup()
             
             // Update the app's display.
-            infoLabel.text = "Peer Ended"
+            //infoLabel.text = "Peer Ended"
         case .timeout:
             
             // The peer timed out, but the session is valid.
@@ -342,7 +339,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             if let config = session.configuration {
                 session.run(config)
             }
-            infoLabel.text = "Peer Timeout"
+            //infoLabel.text = "Peer Timeout"
         default:
             fatalError("Unknown and unhandled NINearbyObject.RemovalReason")
         }
@@ -407,7 +404,8 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         for anchor in anchors {
             if let participantAnchor = anchor as? ARParticipantAnchor {
                 //messageLabel.displayMessage("Established joint experience with a peer.")
-                
+                peerTransFromARKit = participantAnchor.transform
+                print("ar data is ready")
                 //add the peer anchor to the session
                 sceneView.session.add(anchor: participantAnchor)
             }        }
@@ -461,34 +459,39 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 //使用NI数据进行两次位姿转换 Pcam->MyCam->MyWorld
                 guard let direction = peerDirection else { couldDetect = true; return }
                 guard let distance = peerDistance else { couldDetect = true; return }
-                let Pos = coordinateAlignment(direction: direction, distance: distance, myCam: cam, peerEuler: peerEulerangle!, pos: pos)
+                
+                let peerPos = alignDistanceWithNI(distance: distance, direction: direction)
+                //算法1 使用两次位姿旋转矩阵
+                //let Pos = coordinateAlignment(direction: direction, distance: distance, myCam: cam, peerEuler: peerEulerangle!, pos: pos)
                 
                 
-                var wPos: simd_float4 = simd_float4(0,0,0,0)
                 //使用NI库自带的peer位姿矩阵 和 peercam坐标系坐标 求解世界坐标系坐标
-                guard let peerT = peerTrans else { couldDetect = true; return }
-                if peerT.columns.0 == simd_float4(0,0,0,0) {
-                    let peerR = correctPose(with: peerEulerangle!, using: cam.eulerAngles)
-                    let T = peerT + peerR
-                    wPos = T * pos
-                } else {
-                    wPos = peerT * pos
-                }
+                guard let peerT = peerTransFromARKit else { couldDetect = true; return }
                 
                 
-                //添加ar物体
-                guard let anchor = anchorFromPeer else { couldDetect = true; return }
-                print("all condition meet")
-                var trans = anchor.transform
-                trans.columns.3 = wPos
-                let newAnchor = ARAnchor(name: Constants.ObjectName, transform: trans)
+                
+                let peerTrans: simd_float4x4 = simd_float4x4(peerT.columns.0,
+                                                         peerT.columns.1,
+                                                         peerT.columns.2,
+                                                         Constants.weight * peerT.columns.3 + (1 - Constants.weight) * peerPos)
+                
+                guard let anchor = anchorFromPeer else { couldDetect = true; return}
+                
+                let objPos = cam.transform * peerTrans * pos
+                let objTrans = simd_float4x4(anchor.transform.columns.0,
+                                             anchor.transform.columns.1,
+                                             anchor.transform.columns.2,
+                                             objPos)
+                
+                let newAnchor = ARAnchor(name: Constants.ObjectName, transform: objTrans)
+                
+                //算法结束 添加ar实体
                 addAnchor(anchor: newAnchor)
                 couldDetect = true
                 
                 DispatchQueue.main.async {
-                    //显示世界坐标系坐标位置
-                    print("posfromarithmatic:\(Pos)")
-                    print("posfromuwbmeasure:\(wPos)")
+                    //显示世界坐标系坐标位置 算法1使用
+                    //print("posfromarithmatic:\(Pos)")
                 }
                 
             }
@@ -526,7 +529,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     //handling interruption and suspension
     func sessionWasSuspended(_ session: NISession) {
-        infoLabel.text = "Session was suspended"
+        //infoLabel.text = "Session was suspended"
     }
     
     func sessionSuspensionEnded(_ session: NISession) {
@@ -537,8 +540,8 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             startup()
         }
         DispatchQueue.main.async {
-            self.infoLabel.text = "已连接"
-            self.infoLabel.text = "链接对象" + self.peerDisplayName!
+            //self.infoLabel.text = "已连接"
+            //self.infoLabel.text = "链接对象" + self.peerDisplayName!
         }
     }
     
@@ -642,8 +645,10 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             + "z:" + String(format: "%.2f", direction.z)
         }
         
-        guard let transform = niSession?.worldTransform(for: peer) else { return }
-        peerTrans = transform
+        //使用ar的collaboration数据时无法使用该变量
+//        guard let transform = niSession?.worldTransform(for: peer) else { return }
+//        peerTrans = transform
+//        print("NI data is ready")
     }
     
     
@@ -849,4 +854,5 @@ struct Constants {
     static let ObjectName = "Object"
     static let distanceThereshold: Float = 0.4
     static let frameNum: Int = 2
+    static let weight: Float = 0.8
 }
