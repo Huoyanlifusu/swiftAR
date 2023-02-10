@@ -1,23 +1,23 @@
 
-有效代码框架. 
+有效代码框架 
 
-  --artest. 
+  --artest 
 
-    --delegate. 
+    --delegate
   
-      --MPCSession //MPC框架. 
+      --MPCSession //MPC框架
     
-      --APPdelagate. 
+      --APPdelagate
     
-    --views. 
+    --views
   
-      --ViewController //主程序. 
+      --ViewController //主程序
     
-      --ViewControllerCoachingOverlay //引导界面. 
+      --ViewControllerCoachingOverlay //引导界面
     
-    --Utilities. 
+    --Utilities
   
-      --Utilities. 
+      --Utilities
     
-      --MathUtilities //部分算法. 
+      --MathUtilities //部分算法
     
