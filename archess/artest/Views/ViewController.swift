@@ -403,28 +403,41 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             
             //判断是否出界
             if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
-                self.setInfoLabel(with: "放置位置超出范围")
+                setInfoLabel(with: "放置位置超出范围")
+                setDeviceLabel(with: "您的回合，请重新放置")
+                MyChessInfo.canIPlaceChess = true
                 return
             }
             //判断是否已经落子
             if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == false {
                 setInfoLabel(with: "该处已经有棋子")
+                setDeviceLabel(with: "您的回合，请重新放置")
+                MyChessInfo.canIPlaceChess = true
                 return
             }
-            
-            
-
             originNode!.addChildNode(loadBlackChess(with: localTrans))
+            updateIndexArray(indexOfX: indexOfY, indexOfY: indexOfY, with: 1)
             
-            if updateIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: 1) == 2 {
-                //显示胜利UI
-                setInfoLabel(with: "您胜利了！")
-                return
+            if MyChessInfo.myChessNum >= 5 {
+                if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
+                    setInfoLabel(with: "您胜利了！")
+                    setDeviceLabel(with: "游戏结束")
+                    sendCodeToPeer(with: 7)
+                    return
+                } else {
+                    setInfoLabel(with: "等待对方落子")
+                    setDeviceLabel(with: "对方回合")
+                    sendCodeToPeer(with: 6)
+                    return
+                }
             } else {
+                setInfoLabel(with: "等待对方落子")
+                setDeviceLabel(with: "对方回合")
                 sendCodeToPeer(with: 6)
+                return
             }
+
             
-            return
         }
         if let name = anchor.name, name.hasPrefix(Constants.whiteChessName) {
             guard let originAnchor = sceneView.anchor(for: originNode!) else { return }
@@ -440,28 +453,39 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             
             //判断是否出界
             if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
-                self.setInfoLabel(with: "放置位置超出范围,请重新落子")
+                setInfoLabel(with: "放置位置超出范围")
+                setDeviceLabel(with: "您的回合，请重新放置")
                 MyChessInfo.canIPlaceChess = true
                 return
             }
             //判断是否已经落子
-            if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == true {
-                setInfoLabel(with: "该处已有棋子,请重新落子")
+            if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == false {
+                setInfoLabel(with: "该处已经有棋子")
+                setDeviceLabel(with: "您的回合，请重新放置")
                 MyChessInfo.canIPlaceChess = true
                 return
             }
-
             originNode!.addChildNode(loadBlackChess(with: localTrans))
+            updateIndexArray(indexOfX: indexOfY, indexOfY: indexOfY, with: 1)
             
-            if updateIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: 2) == 2 {
-                //显示胜利UI
-                setInfoLabel(with: "您胜利了！")
-                return
+            if MyChessInfo.myChessNum >= 5 {
+                if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
+                    setInfoLabel(with: "您胜利了！")
+                    setDeviceLabel(with: "游戏结束")
+                    sendCodeToPeer(with: 7)
+                    return
+                } else {
+                    setInfoLabel(with: "等待对方落子")
+                    setDeviceLabel(with: "对方回合")
+                    sendCodeToPeer(with: 6)
+                    return
+                }
             } else {
+                setInfoLabel(with: "等待对方落子")
+                setDeviceLabel(with: "对方回合")
                 sendCodeToPeer(with: 6)
+                return
             }
-            
-            return
         }
     }
     
@@ -899,8 +923,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 self.mpc?.sendDataToAllPeers(data: posData)
                 
                 MyChessInfo.canIPlaceChess = false
-                setDeviceLabel(with: "对方回合")
-                setInfoLabel(with: "请等待对方落子")
+                setInfoLabel(with: "棋子渲染中")
             }
             
             
