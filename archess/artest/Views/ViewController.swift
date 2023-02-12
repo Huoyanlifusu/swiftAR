@@ -112,6 +112,26 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
 //        return imageView
 //    }()
     
+    //退出按钮
+    private let exitButton: UIButton = {
+        let button = UIButton(frame: CGRect(x: 0,
+                                            y: 0,
+                                            width: 60,
+                                            height: 60))
+        button.backgroundColor = .systemBlue
+        button.layer.cornerRadius = 30
+        button.layer.shadowRadius = 10
+        button.layer.shadowOpacity = 0.3
+        //button.layer.masksToBounds = true
+        let image = UIImage(systemName: "back",
+                            withConfiguration: UIImage.SymbolConfiguration(pointSize: 32,
+                                                                           weight: .medium))
+        button.setImage(image, for: .normal)
+        button.tintColor = .white
+        button.setTitleColor(.white, for: .normal)
+        return button
+    }()
+    
     
     
     override func viewDidLoad() {
@@ -127,6 +147,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
 //
 //        })
 //    }
+    
     
     
     override func viewDidAppear(_ animated: Bool) {
@@ -161,6 +182,8 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         sceneView.session.run(configuration)
         print("AR Session Started!")
         
+        view.addSubview(exitButton)
+        
         //show feature points in ar experience, usually not used
         //sceneView.debugOptions = ARSCNDebugOptions.showFeaturePoints
         
@@ -185,6 +208,16 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
         //suspend session
         sceneView.session.pause()
+        
+    }
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        exitButton.frame = CGRect(x: view.frame.size.width - 70,
+                                  y: view.frame.size.height - 100,
+                                  width: 60,
+                                  height: 60)
+        exitButton.addTarget(self, action: #selector(didExit), for: .touchUpInside)
     }
     
     
@@ -252,6 +285,24 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         } else {
             fatalError("Could not catch your token.")
         }
+    }
+    
+    @objc private func didExit() {
+        let alert = UIAlertController(title: "提醒",
+                                      message: "是否返回主界面，当前所有内容都会丢失",
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确认",
+                                      style: .destructive){ (action) in
+            //暂停mpc
+            if self.mpc != nil {
+                self.mpc?.suspend()
+                self.mpc = nil
+            }
+            
+            self.performSegue(withIdentifier: "exitToMain", sender: self)
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(alert, animated: true)
     }
     
     //handler of connection
@@ -1039,6 +1090,13 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     }
     
+    
+    func restartByButton() {
+        
+    }
+    
+    
+    //清理自己创造的棋子和棋盘
     @IBAction func removeAllAnchorsYouCreated(_ sender: UIButton?) {
         guard let frame = sceneView.session.currentFrame else { return }
         for anchor in frame.anchors {
