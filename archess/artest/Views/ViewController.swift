@@ -13,6 +13,7 @@
 //  5——收到该信号表示己方执黑，对方执白
 //  6--收到该信号表示对方回合已经结束，己方回合开始
 //  7--收到该信号表示对方获胜，您输了
+//  8--收到该信号表示游戏即将重启
 
 
 import Foundation
@@ -82,7 +83,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     //some mathematical data
     var camera: ARCamera?
-    var worldPosition: simd_float4x4?
     var objPos: simd_float4?
     
     var peerTrans: simd_float4x4?
@@ -92,7 +92,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     var chessBoardAnchorFromPeer: ARAnchor?
     var chessAnchorFromPeer: ARAnchor?
     
-    var eularAngle: simd_float3?
     var eulerangleForSending: simd_float3?
     var peerEulerangle: simd_float3?
     var peerPos: simd_float4?
@@ -118,12 +117,12 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                                             y: 0,
                                             width: 60,
                                             height: 60))
-        button.backgroundColor = .systemBlue
+        button.backgroundColor = .black
         button.layer.cornerRadius = 30
         button.layer.shadowRadius = 10
         button.layer.shadowOpacity = 0.3
         //button.layer.masksToBounds = true
-        let image = UIImage(systemName: "back",
+        let image = UIImage(systemName: "arrow.left.circle",
                             withConfiguration: UIImage.SymbolConfiguration(pointSize: 32,
                                                                            weight: .medium))
         button.setImage(image, for: .normal)
@@ -132,12 +131,71 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         return button
     }()
     
+    private let restartButton: UIButton = {
+        let button = UIButton(frame: CGRect(x: 0,
+                                            y: 0,
+                                            width: 60,
+                                            height: 60))
+        button.backgroundColor = .black
+        button.layer.cornerRadius = 30
+        button.layer.shadowRadius = 10
+        button.layer.shadowOpacity = 0.3
+        
+        let image = UIImage(systemName: "arrow.clockwise",
+                            withConfiguration: UIImage.SymbolConfiguration(pointSize: 32,
+                                                                           weight: .medium))
+        button.setImage(image, for: .normal)
+        button.tintColor = .white
+        button.setTitleColor(.white, for: .normal)
+        return button
+    }()
+    
+    private let myTurnLabel: UILabel = {
+        let label = UILabel(frame: CGRect(x: 0,
+                                          y: 0,
+                                          width: 180,
+                                          height: 30))
+        label.font = UIFont(name: "hongleisim-Regular", size: 30)
+        label.text = "您的回合"
+        return label
+    }()
+    
+    private let peerTurnLabel: UILabel = {
+        let label = UILabel(frame: CGRect(x: 0,
+                                          y: 0,
+                                          width: 180,
+                                          height: 30))
+        label.text = "对方回合"
+        label.font = UIFont(name: "hongleisim-Regular", size: 30)
+        return label
+    }()
+    
+    private let playImageView: UIImageView = {
+        let image = UIImage(systemName: "play.fill",
+                            withConfiguration: UIImage.SymbolConfiguration(pointSize: 28,
+                                                                           weight: .medium))
+        image?.withTintColor(.black)
+        let view = UIImageView(frame: CGRect(x: 0,
+                                             y: 0,
+                                             width: 25,
+                                             height: 25))
+        view.image = image
+        return view
+    }()
+    
+    func rotateView(for imageView: UIImageView) {
+        imageView.transform = CGAffineTransform(rotationAngle: .pi)
+    }
+    
     
     
     override func viewDidLoad() {
         super.viewDidLoad()
 //        view.addSubview(imageView)
-        
+        for family in UIFont.familyNames.sorted() {
+            let names = UIFont.fontNames(forFamilyName: family)
+            print(family, names)
+        }
         startup()
     }
     
@@ -183,6 +241,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         print("AR Session Started!")
         
         view.addSubview(exitButton)
+        view.addSubview(restartButton)
         
         //show feature points in ar experience, usually not used
         //sceneView.debugOptions = ARSCNDebugOptions.showFeaturePoints
@@ -213,11 +272,32 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        //退出按钮
         exitButton.frame = CGRect(x: view.frame.size.width - 70,
                                   y: view.frame.size.height - 100,
                                   width: 60,
                                   height: 60)
         exitButton.addTarget(self, action: #selector(didExit), for: .touchUpInside)
+        //重启按钮
+        restartButton.frame = CGRect(x: 30,
+                                     y: view.frame.size.height - 100,
+                                     width: 60,
+                                     height: 60)
+        restartButton.addTarget(self, action: #selector(didRestart), for: .touchUpInside)
+        //文本
+        myTurnLabel.frame = CGRect(x: 50,
+                                   y: 30,
+                                   width: 180,
+                                   height: 30)
+        peerTurnLabel.frame = CGRect(x: 200,
+                                     y: 30,
+                                     width: 180,
+                                     height: 30)
+        playImageView.frame = CGRect(x: 170,
+                                     y: 35,
+                                     width: 25,
+                                     height: 25)
+        
     }
     
     
@@ -305,6 +385,49 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         present(alert, animated: true)
     }
     
+    @objc private func didRestart() {
+        let alert = UIAlertController(title: "警告",
+                                      message: "您确定要重启本局游戏吗",
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确认",
+                                      style: .destructive) { (action) in
+            self.restart()
+        })
+        alert.addAction(UIAlertAction(title: "取消",
+                                      style: .cancel))
+        present(alert, animated: true)
+    }
+    
+    func restart() {
+        sendCodeToPeer(with: 8)
+        MyChessInfo.couldInit = true
+        MyChessInfo.canIPlaceChess = false
+        firstClick = false
+        canPlaceBoard = true
+        
+        
+        let configuration = ARWorldTrackingConfiguration()
+        configuration.worldAlignment = .gravity
+        configuration.isCollaborationEnabled = true
+        configuration.environmentTexturing = .automatic
+        configuration.planeDetection = .horizontal
+        sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+    }
+    
+    func restartByCode() {
+        MyChessInfo.couldInit = true
+        MyChessInfo.canIPlaceChess = false
+        firstClick = false
+        canPlaceBoard = true
+        
+        let configuration = ARWorldTrackingConfiguration()
+        configuration.worldAlignment = .gravity
+        configuration.isCollaborationEnabled = true
+        configuration.environmentTexturing = .automatic
+        configuration.planeDetection = .horizontal
+        sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+    }
+    
     //handler of connection
     func connectedToPeer(peer: MCPeerID) {
         guard let myToken = niSession?.discoveryToken else {
@@ -346,147 +469,37 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         sharedTokenWithPeers = true
     }
     
-    
-    
-    //put new anchor into node
+    //渲染器
     func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
+        //渲染棋盘
         if let name = anchor.name, name.hasPrefix(Constants.chessBoardName) {
             DispatchQueue.main.async {
-                self.infoLabel.text = "正在渲染"
+                self.renderChessBoard(for: node)
+                self.infoLabel.text = "渲染结束"
             }
-            //loading url
-            guard let url = Bundle.main.url(forResource: "chessBoard", withExtension: "usdz") else { fatalError("can not find resource url") }
-            
-            guard let boardNode = SCNReferenceNode(url: url) else { fatalError("cannot create chessboard node") }
-            originNode = boardNode
-            boardNode.load()
-            
-            //调整棋盘参数
-            boardNode.scale = SCNVector3(0.3,0.3,0.3)
-            
-            
-            
-            //测试用 对准棋子和棋盘的距离
-//            let refChessNode1 = loadWhiteChess(with: simd_float4(0.1,0.06,0,1))
-//            let refChessNode2 = loadWhiteChess(with: simd_float4(0,0.06,0.1,1))
-            
-            
-            node.addChildNode(originNode!)
-            MyChessInfo.couldInit = true
-            initChessGame()
-            
             return
         }
-        
+        //渲染同伴
         if let participant = anchor as? ARParticipantAnchor {
             node.addChildNode(loadModel())
             return
         }
-        if let name = anchor.name, name.hasPrefix(Constants.blackChessName) {
-            
-            guard let originAnchor = sceneView.anchor(for: originNode!) else { return }
-            var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
-            localTrans.y = 0.058
-            localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
-            localTrans.z = Float(lroundf(localTrans.z * Constants.scaleFromWorldToLocal * 10)) / Float(10)
-            
-            //for testing
-//            print("\(localTrans.x)")
-//            print("\(localTrans.z)")
-            
-            let indexOfX: Int = lroundf(localTrans.x * 10)
-            let indexOfY: Int = lroundf(localTrans.z * 10)
-            
-            //for testing
-//            print("\(indexOfX)")
-//            print("\(indexOfY)")
-            
-            //判断是否出界
-            if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
-                setInfoLabel(with: "放置位置超出范围")
-                setDeviceLabel(with: "您的回合，请重新放置")
-                MyChessInfo.canIPlaceChess = true
-                return
-            }
-            //判断是否已经落子
-            if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == false {
-                setInfoLabel(with: "该处已经有棋子")
-                setDeviceLabel(with: "您的回合，请重新放置")
-                MyChessInfo.canIPlaceChess = true
-                return
-            }
-            originNode!.addChildNode(loadBlackChess(with: localTrans))
-            updateIndexArray(indexOfX: indexOfY, indexOfY: indexOfY, with: 1)
-            
-            if MyChessInfo.myChessNum >= 5 {
-                if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
-                    setInfoLabel(with: "您胜利了！")
-                    setDeviceLabel(with: "游戏结束")
-                    sendCodeToPeer(with: 7)
-                    return
-                } else {
-                    setInfoLabel(with: "等待对方落子")
-                    setDeviceLabel(with: "对方回合")
-                    sendCodeToPeer(with: 6)
-                    return
-                }
-            } else {
-                setInfoLabel(with: "等待对方落子")
-                setDeviceLabel(with: "对方回合")
-                sendCodeToPeer(with: 6)
-                return
-            }
-
-            
-        }
-        if let name = anchor.name, name.hasPrefix(Constants.whiteChessName) {
-            guard let originAnchor = sceneView.anchor(for: originNode!) else { return }
-            var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
-            localTrans.y = 0.058
-            localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
-            localTrans.z = Float(lroundf(localTrans.z * Constants.scaleFromWorldToLocal * 10)) / Float(10)
-            
-            
-            let indexOfX: Int = lroundf(localTrans.x * 10)
-            let indexOfY: Int = lroundf(localTrans.z * 10)
-            
-            
-            //判断是否出界
-            if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
-                setInfoLabel(with: "放置位置超出范围")
-                setDeviceLabel(with: "您的回合，请重新放置")
-                MyChessInfo.canIPlaceChess = true
-                return
-            }
-            //判断是否已经落子
-            if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == false {
-                setInfoLabel(with: "该处已经有棋子")
-                setDeviceLabel(with: "您的回合，请重新放置")
-                MyChessInfo.canIPlaceChess = true
-                return
-            }
-            originNode!.addChildNode(loadBlackChess(with: localTrans))
-            updateIndexArray(indexOfX: indexOfY, indexOfY: indexOfY, with: 1)
-            
-            if MyChessInfo.myChessNum >= 5 {
-                if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
-                    setInfoLabel(with: "您胜利了！")
-                    setDeviceLabel(with: "游戏结束")
-                    sendCodeToPeer(with: 7)
-                    return
-                } else {
-                    setInfoLabel(with: "等待对方落子")
-                    setDeviceLabel(with: "对方回合")
-                    sendCodeToPeer(with: 6)
-                    return
-                }
-            } else {
-                setInfoLabel(with: "等待对方落子")
-                setDeviceLabel(with: "对方回合")
-                sendCodeToPeer(with: 6)
-                return
-            }
-        }
+    }
+    
+    //第一种渲染方法
+    func renderChessBoard(for node: SCNNode) {
+        guard let url = Bundle.main.url(forResource: "chessBoard", withExtension: "usdz") else { fatalError("can not find resource url") }
+        
+        guard let boardNode = SCNReferenceNode(url: url) else { fatalError("cannot create chessboard node") }
+        originNode = boardNode
+        boardNode.load()
+        
+        //调整棋盘参数
+        boardNode.scale = SCNVector3(0.3,0.3,0.3)
+        //添加棋盘节点
+        node.addChildNode(originNode!)
+        MyChessInfo.couldInit = true
+        initChessGame()
     }
     
 //    func loadBoardAsScene()  {
@@ -501,6 +514,77 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
 //        sceneView.scene = scene
 //
 //    }
+    
+    //渲染棋子
+    func renderChess(with anchor: ARAnchor, and color: Int) {
+        guard let originAnchor = sceneView.anchor(for: originNode!) else {print("no origin anchor"); return }
+        var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
+        localTrans.y = 0.058
+        localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
+        localTrans.z = Float(lroundf(localTrans.z * Constants.scaleFromWorldToLocal * 10)) / Float(10)
+        
+        //for testing
+        print("\(localTrans.x)")
+        print("\(localTrans.z)")
+        
+        let indexOfX: Int = lroundf(localTrans.x * 10)
+        let indexOfY: Int = lroundf(localTrans.z * 10)
+        
+        //for testing
+//            print("\(indexOfX)")
+//            print("\(indexOfY)")
+        
+        //判断是否出界
+        if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
+            setInfoLabel(with: "放置位置超出范围")
+            setDeviceLabel(with: "您的回合，请重新放置")
+            MyChessInfo.canIPlaceChess = true
+            return
+        }
+        //判断是否已经落子
+        if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == true {
+            setInfoLabel(with: "该处已经有棋子")
+            setDeviceLabel(with: "您的回合，请重新放置")
+            MyChessInfo.canIPlaceChess = true
+            return
+        }
+        if color == 1 {
+            originNode!.addChildNode(loadBlackChess(with: localTrans))
+        } else {
+            originNode!.addChildNode(loadWhiteChess(with: localTrans))
+        }
+        updateIndexArray(indexOfX: indexOfY, indexOfY: indexOfY, with: color)
+        
+        if MyChessInfo.myChessNum >= 5 {
+            if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
+                setInfoLabel(with: "您胜利了！")
+                setDeviceLabel(with: "游戏结束")
+                sendCodeToPeer(with: 7)
+                return
+            } else {
+                setInfoLabel(with: "等待对方落子")
+                sendCodeToPeer(with: 6)
+                
+                DispatchQueue.main.async {
+                    self.myTurnLabel.alpha = 0.2
+                    self.peerTurnLabel.alpha = 1
+                    self.rotateView(for: self.playImageView)
+                }
+                return
+            }
+        } else {
+            setInfoLabel(with: "等待对方落子")
+            setDeviceLabel(with: "对方回合")
+            sendCodeToPeer(with: 6)
+            
+            DispatchQueue.main.async {
+                self.myTurnLabel.alpha = 0.2
+                self.peerTurnLabel.alpha = 1
+                self.rotateView(for: self.playImageView)
+            }
+            return
+        }
+    }
     
     //load object model
     func loadModel() -> SCNNode {
@@ -631,9 +715,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         
         camera = frame.camera
-        let eularAngles = frame.camera.eulerAngles
-        eularAngle = eularAngles
-        worldPosition = camera?.transform
         
         //decrepted 显示相机参数
 //        DispatchQueue.main.async {
@@ -675,6 +756,12 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 sceneView.session.add(anchor: participantAnchor)
                 
                 print("do receive peer anchor in session")
+            }
+            if anchor.name == Constants.blackChessName {
+                renderChess(with: anchor, and: 1)
+            }
+            if anchor.name == Constants.whiteChessName {
+                renderChess(with: anchor, and: 2)
             }
         }
     }
@@ -734,7 +821,10 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             if anchor.name == Constants.chessBoardName {
                 chessBoardAnchorFromPeer = anchor
             }
-            if anchor.name == Constants.whiteChessName || anchor.name == Constants.blackChessName {
+            if anchor.name == Constants.blackChessName {
+                chessAnchorFromPeer = anchor
+            }
+            if anchor.name == Constants.whiteChessName {
                 chessAnchorFromPeer = anchor
             }
             anchorFromPeer = anchor
@@ -748,9 +838,19 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 setInfoLabel(with: "初始化已完成")
                 return
             case 2:
+                setInfoLabel(with: "等待对方落子")
+                myTurnLabel.alpha = 0.2
+                peerTurnLabel.alpha = 1
                 MyChessInfo.myChessOrder = 2
                 return
             case 3:
+                MyChessInfo.canIPlaceChess = true
+                setInfoLabel(with: "请您放置棋子")
+                //rotate play image
+                
+                rotateView(for: playImageView)
+                myTurnLabel.alpha = 1
+                peerTurnLabel.alpha = 0.2
                 MyChessInfo.myChessOrder = 1
                 return
             case 4:
@@ -762,10 +862,15 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             case 6:
                 MyChessInfo.canIPlaceChess = true
                 setInfoLabel(with: "请您放置棋子")
-                setDeviceLabel(with: "您的回合")
+                
+                rotateView(for: playImageView)
+                myTurnLabel.alpha = 1
+                peerTurnLabel.alpha = 0.2
+                
                 return
             case 7:
                 setInfoLabel(with: "您输了！")
+                setDeviceLabel(with: "游戏结束！")
                 return
                 
             default:
@@ -804,6 +909,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                                      objPos)
         
         let newAnchor = ARAnchor(name: anchor.name!, transform: objTrans)
+        
         print("成功添加peer传来的" + "\(anchor.name!)" + "物体")
         sceneView.session.add(anchor: newAnchor)
     }
@@ -1099,13 +1205,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     
     
-    //use button to reset tracking
-    @IBAction func resetTracking(_ sender: UIButton?) {
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.planeDetection = [.horizontal, .vertical]
-        sceneView.session.run(configuration, options: [.removeExistingAnchors, .resetTracking])
-    }
-    
     //use coachingoverlayview to reset tracking
     @IBAction func resetTracking() {
         guard let configuration = sceneView.session.configuration as? ARWorldTrackingConfiguration else { print("A configuration is required"); return }
@@ -1113,10 +1212,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     }
     
-    
-    func restartByButton() {
-        
-    }
     
     
     //清理自己创造的棋子和棋盘
@@ -1159,6 +1254,9 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         if MyChessInfo.couldInit {
             //randomly pick order
             MyChessInfo.myChessOrder = randomlyPickChessOrder()
+            view.addSubview(myTurnLabel)
+            view.addSubview(peerTurnLabel)
+            view.addSubview(playImageView)
             if MyChessInfo.myChessOrder == 1 {
                 code1 = 2
             }
@@ -1182,15 +1280,17 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             initCodeReceiver(code1!, code2!)
             
             
-            
             if MyChessInfo.myChessOrder == 1 {
                 MyChessInfo.canIPlaceChess = true
                 setInfoLabel(with: "请您落子")
-                setDeviceLabel(with: "您的回合")
+                peerTurnLabel.alpha = 0.2
+                myTurnLabel.alpha = 1
+                rotateView(for: playImageView)
             }
             if MyChessInfo.myChessOrder == 2 {
                 setInfoLabel(with: "等待对方落子")
-                setDeviceLabel(with: "对方回合")
+                myTurnLabel.alpha = 0.2
+                peerTurnLabel.alpha = 1
             }
         }
     }
@@ -1223,4 +1323,8 @@ struct Constants {
     static let weight: Float = 0.8
     
     static let scaleFromWorldToLocal: Float = 3.3
+    
+    //UI界面参数
+    static let myLabelAlpha = 1
+    static let peerLabelAlpha = 0.2
 }
