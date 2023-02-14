@@ -94,7 +94,7 @@ func WhoIsWinner(_ chesses: [[Int]]) -> Int {
                     return 2
                 }
             }
-            if i >= 4 {
+            if i >= 4 && j < chesses.count - 4 {
                 if chesses[i][j] == 1 && chesses[i-1][j+1] == chesses[i-2][j+2]
                     && chesses[i-2][j+2] == chesses[i-3][j+3] && chesses[i-3][j+3] == chesses[i-4][j+4]
                     && chesses[i-4][j+4] == chesses[i][j] {
