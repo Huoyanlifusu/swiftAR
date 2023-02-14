@@ -11,9 +11,9 @@ import SceneKit
 import simd
 
 
-class ViewControllerB: UIViewController, ARSessionDelegate {
+class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
+    @IBOutlet weak var arSceneView: ARSCNView!
     
-    @IBOutlet weak var sceneView: ARSCNView!
     
     var originNode: SCNNode?
     
@@ -101,12 +101,12 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         //niSession?.setARSession(sceneView.session)
         
         //set delegate
-        sceneView.session.delegate = self
-        sceneView.automaticallyUpdatesLighting = false
+        arSceneView.session.delegate = self
+        arSceneView.automaticallyUpdatesLighting = false
         
         //add light to show color
-        sceneView.autoenablesDefaultLighting = true
-        sceneView.automaticallyUpdatesLighting = true
+        arSceneView.autoenablesDefaultLighting = true
+        arSceneView.automaticallyUpdatesLighting = true
         
         //start ar session
         
@@ -116,7 +116,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         configuration.isCollaborationEnabled = true
         configuration.environmentTexturing = .automatic
         configuration.planeDetection = .horizontal
-        sceneView.session.run(configuration)
+        arSceneView.session.run(configuration)
         print("AR Session Started!")
         
         view.addSubview(exitButton)
@@ -139,7 +139,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         super.viewWillDisappear(animated)
         
         //suspend session
-        sceneView.session.pause()
+        arSceneView.session.pause()
         
     }
     
@@ -176,6 +176,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
                                       style: .destructive){ (action) in
             resetMyChessInfo()
             resetAIChessInfo()
+            self.originNode = nil
             //perform segue
             self.performSegue(withIdentifier: "viewBExitToMain", sender: self)
         })
@@ -202,6 +203,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         resetAIChessInfo()
         firstClick = false
         canPlaceBoard = true
+        originNode = nil
         
         
         let configuration = ARWorldTrackingConfiguration()
@@ -209,7 +211,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         configuration.isCollaborationEnabled = true
         configuration.environmentTexturing = .automatic
         configuration.planeDetection = .horizontal
-        sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        arSceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     }
     
     //渲染器
@@ -309,7 +311,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
     }
     
     func renderChess(with anchor: ARAnchor, and color: Int) {
-        guard let originAnchor = sceneView.anchor(for: originNode!) else {print("no origin anchor"); return }
+        guard let originAnchor = arSceneView.anchor(for: originNode!) else {print("no origin anchor"); return }
         var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
         localTrans.y = 0.055
         localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
@@ -382,15 +384,15 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
     //Hit test function
     @IBAction func handleTap(_ sender: UITapGestureRecognizer) {
         if sender.state == .ended {
-            let location = sender.location(in: sceneView)
-            guard let arRayCastQuery = sceneView
+            let location = sender.location(in: arSceneView)
+            guard let arRayCastQuery = arSceneView
                 .raycastQuery(from: location,
                               allowing: .estimatedPlane,
                               alignment: .horizontal)
             else {
                 return
             }
-            guard let result = sceneView.session.raycast(arRayCastQuery).first
+            guard let result = arSceneView.session.raycast(arRayCastQuery).first
             else {
                 return
             }
@@ -398,7 +400,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
             if firstClick == false && canPlaceBoard {
                 //create and add chessboard anchor
                 let anchor = ARAnchor(name: Constants.chessBoardName, transform: result.worldTransform)
-                sceneView.session.add(anchor: anchor)
+                arSceneView.session.add(anchor: anchor)
                 
                 //有时arkit会多次检测tap，防止程序崩溃，同时保证此时不会产生新的board
                 canPlaceBoard = false
@@ -411,10 +413,10 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
                 //create and add chess anchor
                 if MyChessInfo.myChessColor == 1 {
                     let anchor = ARAnchor(name: Constants.blackChessName, transform: result.worldTransform)
-                    sceneView.session.add(anchor: anchor)
+                    arSceneView.session.add(anchor: anchor)
                 } else if MyChessInfo.myChessColor == 2 {
                     let anchor = ARAnchor(name: Constants.whiteChessName, transform: result.worldTransform)
-                    sceneView.session.add(anchor: anchor)
+                    arSceneView.session.add(anchor: anchor)
                 } else {
                     fatalError("cannot load chess when you dont have color!!")
                 }
@@ -422,7 +424,10 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
                 
                 
                 MyChessInfo.canIPlaceChess = false
-                setInfoLabel(with: "棋子渲染中")
+                
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "棋子渲染中")
+                }
             }
             
            
@@ -449,10 +454,13 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
             //游戏结束
             print("你输了，ai胜利")
         } else {
-            renderAIChess(with: nextAIStep!)
+            guard let nextSteo = nextAIStep else { fatalError("nextStep数据异常") }
+            renderAIChess(with: nextSteo)
             MyChessInfo.canIPlaceChess = true
-            setInfoLabel(with: "请您放置棋子")
-            setDeviceLabel(with: "您的回合")
+            DispatchQueue.main.async {
+                self.setInfoLabel(with: "请您放置棋子")
+                self.setDeviceLabel(with: "您的回合")
+            }
         }
     }
     
