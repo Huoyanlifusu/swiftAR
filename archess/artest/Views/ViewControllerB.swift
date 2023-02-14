@@ -8,6 +8,8 @@ import Foundation
 import UIKit
 import ARKit
 import SceneKit
+import simd
+
 
 class ViewControllerB: UIViewController, ARSessionDelegate {
     
@@ -173,6 +175,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         alert.addAction(UIAlertAction(title: "确认",
                                       style: .destructive){ (action) in
             resetMyChessInfo()
+            resetAIChessInfo()
             //perform segue
             self.performSegue(withIdentifier: "viewBExitToMain", sender: self)
         })
@@ -196,6 +199,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
     
     func restart() {
         resetMyChessInfo()
+        resetAIChessInfo()
         firstClick = false
         canPlaceBoard = true
         
@@ -253,9 +257,11 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
                 setInfoLabel(with: "请您落子")
             }
             if MyChessInfo.myChessOrder == 2 {
+                AITurn()
                 setInfoLabel(with: "等待对方落子")
             }
         }
+        AIInitial(with: AIChessInfo.level)
     }
     
     func loadBlackChess(with pos: simd_float4) -> SCNNode {
@@ -305,7 +311,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
     func renderChess(with anchor: ARAnchor, and color: Int) {
         guard let originAnchor = sceneView.anchor(for: originNode!) else {print("no origin anchor"); return }
         var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
-        localTrans.y = 0.058
+        localTrans.y = 0.055
         localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
         localTrans.z = Float(lroundf(localTrans.z * Constants.scaleFromWorldToLocal * 10)) / Float(10)
         
@@ -322,15 +328,19 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         
         //判断是否出界
         if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
-            setInfoLabel(with: "放置位置超出范围")
-            setDeviceLabel(with: "您的回合，请重新放置")
+            DispatchQueue.main.async {
+                self.setInfoLabel(with: "放置位置超出范围")
+                self.setDeviceLabel(with: "您的回合，请重新放置")
+            }
             MyChessInfo.canIPlaceChess = true
             return
         }
         //判断是否已经落子
         if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == true {
-            setInfoLabel(with: "该处已经有棋子")
-            setDeviceLabel(with: "您的回合，请重新放置")
+            DispatchQueue.main.async {
+                self.setInfoLabel(with: "该处已经有棋子")
+                self.setDeviceLabel(with: "您的回合，请重新放置")
+            }
             MyChessInfo.canIPlaceChess = true
             return
         }
@@ -339,27 +349,32 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
         } else {
             originNode!.addChildNode(loadWhiteChess(with: localTrans))
         }
-        updateIndexArray(indexOfX: indexOfY, indexOfY: indexOfY, with: color)
+        updateAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: color)
         
         if MyChessInfo.myChessNum >= 5 {
-            if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
-                setInfoLabel(with: "您胜利了！")
-                setDeviceLabel(with: "游戏结束")
+            if isMeWin(AIChessInfo.IndexArray) {
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "您胜利了！")
+                    self.setDeviceLabel(with: "游戏结束")
+                }
                 MyChessInfo.canIPlaceChess = false
                 return
             } else {
-                setInfoLabel(with: "等待对方落子")
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "等待AI落子")
+                    self.setDeviceLabel(with: "AI回合")
+                }
                 MyChessInfo.canIPlaceChess = false
-                
+                AITurn()
                 return
             }
         } else {
             MyChessInfo.canIPlaceChess = false
             DispatchQueue.main.async {
-                self.setInfoLabel(with: "等待对方落子")
-                self.setDeviceLabel(with: "对方回合")
-                
+                self.setInfoLabel(with: "等待AI落子")
+                self.setDeviceLabel(with: "AI回合")
             }
+            AITurn()
             return
         }
     }
@@ -384,16 +399,6 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
                 //create and add chessboard anchor
                 let anchor = ARAnchor(name: Constants.chessBoardName, transform: result.worldTransform)
                 sceneView.session.add(anchor: anchor)
-                
-                
-                guard let cam = self.camera else { return }
-                
-                //unused euler data
-    //            guard let eulerData = try? JSONEncoder().encode(cam.eulerAngles) else { fatalError("dont have your cam") }
-    //            self.mpc?.sendDataToAllPeers(data: eulerData)
-                
-                let pos = cam.transform.inverse * result.worldTransform.columns.3
-                
                 
                 //有时arkit会多次检测tap，防止程序崩溃，同时保证此时不会产生新的board
                 canPlaceBoard = false
@@ -421,6 +426,33 @@ class ViewControllerB: UIViewController, ARSessionDelegate {
             }
             
            
+        }
+    }
+    
+    func renderAIChess(with index: [Int]) {
+        let indexOfX = index[0] - 4
+        let indexOfY = index[1] - 4
+        let coordinateOfX = Float(indexOfX) * 0.1
+        let coordinateOfY = Float(indexOfY) * 0.1
+        updateAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: AIChessInfo.AIChessColor)
+        let localTrans = simd_float4(coordinateOfX, 0.055, coordinateOfY, 1)
+        if AIChessInfo.AIChessColor == 1 {
+            originNode!.addChildNode(loadBlackChess(with: localTrans))
+        } else {
+            originNode!.addChildNode(loadWhiteChess(with: localTrans))
+        }
+    }
+    
+    func AITurn() {
+        let nextAIStep = AIstep()
+        if nextAIStep == nil {
+            //游戏结束
+            print("你输了，ai胜利")
+        } else {
+            renderAIChess(with: nextAIStep!)
+            MyChessInfo.canIPlaceChess = true
+            setInfoLabel(with: "请您放置棋子")
+            setDeviceLabel(with: "您的回合")
         }
     }
     
