@@ -28,7 +28,27 @@ struct AIChessInfo {
     static var AIChessColor = 0
     
     static let searchDepth = 3
+    
+    static let attackRatio: Float = 1.0 // 大于1防守型AI 小于1进攻型AI
 
+    
+    static let shapeScore = [[0,0,1,0,0]: 20, [0,0,2,0,0]: 20,
+                                 [0,1,1,0,0]: 100, [0,2,2,0,0]: 100,
+                                 [1,0,1,0,0]: 80, [2,0,2,0,0]: 80,
+                                 [0,0,1,1,0]: 100, [0,0,2,2,0]: 100,
+                                 [0,0,1,0,1]: 80, [0,0,2,0,2]: 80,
+                                 [1,1,1,0,0]: 400, [2,2,2,0,0]: 400,
+                                 [0,1,1,1,0]: 500, [0,2,2,2,0]: 500,
+                                 [0,1,1,0,1]: 450, [0,2,2,0,2]: 450,
+                                 [0,0,1,1,1]: 400, [0,0,2,2,2]: 400,
+                                 [1,0,1,1,0]: 450, [2,0,2,2,0]: 450,
+                                 [1,0,1,0,1]: 300, [2,0,2,0,2]: 300,
+                                 [1,1,1,1,0]: 2000, [2,2,2,2,0]: 2000,
+                                 [1,1,1,0,1]: 2000, [2,2,2,0,2]: 2000,
+                                 [1,1,0,1,1]: 1600, [2,2,0,2,2]: 1600,
+                                 [1,0,1,1,1]: 2000, [2,0,2,2,2]: 2000,
+                                 [0,1,1,1,1]: 2000, [0,2,2,2,2]: 2000,
+                                 [1,1,1,1,1]: 99999, [2,2,2,2,2]: 99999]
 }
 //哈希表存放棋子信息
 
@@ -78,11 +98,13 @@ func MediumAI() {
 
 
 func AIstep() -> [Int]? {
-    let value = negaMax(depth: AIChessInfo.searchDepth, alpha: -999999, beta: 999999)
+    let value = negaMax(depth: AIChessInfo.searchDepth, alpha: -99999, beta: 99999)
     AIChessInfo.indexDict[AIChessInfo.nextStep] = AIChessInfo.AIChessColor
     AIChessInfo.IndexArray[AIChessInfo.nextStep[0]][AIChessInfo.nextStep[1]] = AIChessInfo.AIChessColor
     if isAIWin(AIChessInfo.IndexArray) {
-        print("AI获胜！")
+        DispatchQueue.main.async {
+            print("AI获胜！")
+        }
         return nil
     }
     return AIChessInfo.nextStep
@@ -106,13 +128,17 @@ func negaMax(depth: Int, alpha: Int, beta: Int) -> Int {
         let value = negaMax(depth: depth-1, alpha: -beta, beta: -newAlpha)
         AIChessInfo.indexDict.updateValue(0, forKey: key)
         AIChessInfo.IndexArray[key[0]][key[1]] = 0
-        if value > beta {
-            AIChessInfo.nextStep = key
-            return beta
-        }
         if value > newAlpha {
-            AIChessInfo.nextStep = key
             newAlpha = value
+            
+            if depth == AIChessInfo.searchDepth {
+                AIChessInfo.nextStep = key
+            }
+            
+            if value >= beta {
+                AIChessInfo.nextStep = key
+                return beta
+            }
         }
         
     }
@@ -124,13 +150,102 @@ func negaMax(depth: Int, alpha: Int, beta: Int) -> Int {
 func evaluate() -> Int {
     
     var AIScore: Int = 0
-    //更新AI棋子权重
-    
     var PlayerScore: Int = 0
-    //更新玩家棋子权重
+    //更新AI棋子权重
+    for (key, value) in AIChessInfo.indexDict {
+        if value == 0 {
+            continue
+        } else if value == AIChessInfo.AIChessColor {
+            AIScore += addWeight(with: 1, and: key)
+            AIScore += addWeight(with: 2, and: key)
+            AIScore += addWeight(with: 3, and: key)
+            AIScore += addWeight(with: 4, and: key)
+        } else {
+            PlayerScore += addWeight(with: 1, and: key)
+            PlayerScore += addWeight(with: 2, and: key)
+            PlayerScore += addWeight(with: 3, and: key)
+            PlayerScore += addWeight(with: 4, and: key)
+        }
+    }
     
-    let totalScore = AIScore - PlayerScore/10
+    
+    let totalScore = AIScore - Int(Float(PlayerScore) * AIChessInfo.attackRatio)
     return totalScore
+}
+
+func addWeight(with direction: Int, and index: [Int]) -> Int {
+    if index[0] < 2 || index[0] > 7 || index[1] < 2 || index[1] > 7 {
+        return 0
+    }
+    
+    switch direction {
+    case 1:
+        //横排检索
+        let index_l1 = [index[0]-1, index[1]]
+        let index_l2 = [index[0]-2, index[1]]
+        let index_r1 = [index[0]+1, index[1]]
+        let index_r2 = [index[0]+2, index[1]]
+        let chessNearby: [Int] = [AIChessInfo.indexDict[index_l2]!,
+                                  AIChessInfo.indexDict[index_l1]!,
+                                  AIChessInfo.indexDict[index]!,
+                                  AIChessInfo.indexDict[index_r1]!,
+                                  AIChessInfo.indexDict[index_r2]!]
+        if AIChessInfo.shapeScore[chessNearby] != nil {
+            guard let addScore = AIChessInfo.shapeScore[chessNearby] else { fatalError("score数据错误") }
+            return addScore
+        }
+        return 0
+    case 2:
+        //竖排检索
+        let index_d1 = [index[0], index[1]-1]
+        let index_d2 = [index[0], index[1]-2]
+        let index_u1 = [index[0], index[1]+1]
+        let index_u2 = [index[0], index[1]+2]
+        let chessNearby: [Int] = [AIChessInfo.indexDict[index_d2]!,
+                                  AIChessInfo.indexDict[index_d1]!,
+                                  AIChessInfo.indexDict[index]!,
+                                  AIChessInfo.indexDict[index_u1]!,
+                                  AIChessInfo.indexDict[index_u2]!]
+        if AIChessInfo.shapeScore[chessNearby] != nil {
+            guard let addScore = AIChessInfo.shapeScore[chessNearby] else { fatalError("score数据错误") }
+            return addScore
+        }
+        return 0
+    case 3:
+        //左上-右下检索
+        let index_d1 = [index[0]+1, index[1]-1]
+        let index_d2 = [index[0]+2, index[1]-2]
+        let index_u1 = [index[0]-1, index[1]+1]
+        let index_u2 = [index[0]-2, index[1]+2]
+        let chessNearby: [Int] = [AIChessInfo.indexDict[index_d2]!,
+                                  AIChessInfo.indexDict[index_d1]!,
+                                  AIChessInfo.indexDict[index]!,
+                                  AIChessInfo.indexDict[index_u1]!,
+                                  AIChessInfo.indexDict[index_u2]!]
+        if AIChessInfo.shapeScore[chessNearby] != nil {
+            guard let addScore = AIChessInfo.shapeScore[chessNearby] else { fatalError("score数据错误") }
+            return addScore
+        }
+        return 0
+    case 4:
+        //右上-左下检索
+        let index_d1 = [index[0]-1, index[1]-1]
+        let index_d2 = [index[0]-2, index[1]-2]
+        let index_u1 = [index[0]+1, index[1]+1]
+        let index_u2 = [index[0]+2, index[1]+2]
+        let chessNearby: [Int] = [AIChessInfo.indexDict[index_d2]!,
+                                  AIChessInfo.indexDict[index_d1]!,
+                                  AIChessInfo.indexDict[index]!,
+                                  AIChessInfo.indexDict[index_u1]!,
+                                  AIChessInfo.indexDict[index_u2]!]
+        if AIChessInfo.shapeScore[chessNearby] != nil {
+            guard let addScore = AIChessInfo.shapeScore[chessNearby] else { fatalError("score数据错误") }
+            return addScore
+        }
+        return 0
+    default:
+        return 0
+    }
 }
 
 //判断棋子旁有没有邻居
@@ -228,3 +343,8 @@ func updateAIIndexArray(indexOfX: Int, indexOfY: Int, with ChessColor: Int) {
     AIChessInfo.indexDict.updateValue(ChessColor, forKey: [indexOfX, indexOfY])
     MyChessInfo.myChessNum += 1
 }
+
+
+
+
+
