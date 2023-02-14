@@ -6,14 +6,16 @@
 //
 import Foundation
 import UIKit
+import RealityKit
 import ARKit
 import SceneKit
 import simd
 
 
+
+@available(iOS 16.0, *)
 class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
-    @IBOutlet weak var arSceneView: ARSCNView!
-    
+    @IBOutlet weak var ARview: ARSCNView!
     
     var originNode: SCNNode?
     
@@ -27,9 +29,9 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     private let infoLabel: UILabel = {
         let label = UILabel(frame: CGRect(x: 0,
                                           y: 0,
-                                          width: 200,
-                                          height: 40))
-        label.font = UIFont(name: "hongleisim-Regular", size: 30)
+                                          width: anotherConstants.labelLength,
+                                          height: anotherConstants.labelHeight))
+        label.font = UIFont(name: "hongleisim-Regular", size: 20)
         label.text = ""
         return label
     }()
@@ -37,10 +39,10 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     private let deviceLabel: UILabel = {
         let label = UILabel(frame: CGRect(x: 0,
                                           y: 0,
-                                          width: 200,
-                                          height: 40))
-        label.font = UIFont(name: "hongleisim-Regular", size: 30)
-        label.text = ""
+                                          width: anotherConstants.labelLength,
+                                          height: anotherConstants.labelHeight))
+        label.font = UIFont(name: "hongleisim-Regular", size: 20)
+        label.text = "initalDeviceLabel"
         return label
     }()
     
@@ -89,7 +91,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     }
     
     override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(true)
+        super.viewDidAppear(animated)
         
         guard ARWorldTrackingConfiguration.isSupported else {
             fatalError("do not support ar world tracking")
@@ -101,12 +103,12 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         //niSession?.setARSession(sceneView.session)
         
         //set delegate
-        arSceneView.session.delegate = self
-        arSceneView.automaticallyUpdatesLighting = false
+        ARview.session.delegate = self
+        ARview.automaticallyUpdatesLighting = false
         
         //add light to show color
-        arSceneView.autoenablesDefaultLighting = true
-        arSceneView.automaticallyUpdatesLighting = true
+        ARview.autoenablesDefaultLighting = true
+        ARview.automaticallyUpdatesLighting = true
         
         //start ar session
         
@@ -116,7 +118,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         configuration.isCollaborationEnabled = true
         configuration.environmentTexturing = .automatic
         configuration.planeDetection = .horizontal
-        arSceneView.session.run(configuration)
+        ARview.session.run(configuration)
         print("AR Session Started!")
         
         view.addSubview(exitButton)
@@ -139,7 +141,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         super.viewWillDisappear(animated)
         
         //suspend session
-        arSceneView.session.pause()
+        ARview.session.pause()
         
     }
     
@@ -158,14 +160,14 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                                      height: 60)
         restartButton.addTarget(self, action: #selector(didRestart), for: .touchUpInside)
         //label
-        infoLabel.frame = CGRect(x: view.frame.size.width/2,
-                                 y: view.frame.size.height/2 - 40,
-                                 width: 200,
-                                 height: 40)
-        deviceLabel.frame = CGRect(x: view.frame.size.width/2,
-                                   y: view.frame.size.height/2 - 80,
-                                   width: 200,
-                                   height: 40)
+        infoLabel.frame = CGRect(x: view.frame.size.width/2 - 45,
+                                 y: view.frame.size.height/2 - 200,
+                                 width: anotherConstants.labelLength,
+                                 height: anotherConstants.labelHeight)
+        deviceLabel.frame = CGRect(x: view.frame.size.width/2 - 45,
+                                   y: view.frame.size.height/2 - 280,
+                                   width: anotherConstants.labelLength,
+                                   height: anotherConstants.labelHeight)
     }
     
     @objc private func didExit() {
@@ -211,7 +213,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         configuration.isCollaborationEnabled = true
         configuration.environmentTexturing = .automatic
         configuration.planeDetection = .horizontal
-        arSceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        ARview.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     }
     
     //渲染器
@@ -220,7 +222,6 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         if let name = anchor.name, name.hasPrefix(Constants.chessBoardName) {
             DispatchQueue.main.async {
                 self.renderChessBoard(for: node)
-                self.infoLabel.text = "渲染结束"
             }
             return
         }
@@ -257,10 +258,12 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             if MyChessInfo.myChessOrder == 1 {
                 MyChessInfo.canIPlaceChess = true
                 setInfoLabel(with: "请您落子")
+                setDeviceLabel(with: "您的回合")
             }
             if MyChessInfo.myChessOrder == 2 {
-                AITurn()
+                AITurn(isFirstStep: true)
                 setInfoLabel(with: "等待对方落子")
+                setDeviceLabel(with: "对方回合")
             }
         }
         AIInitial(with: AIChessInfo.level)
@@ -311,7 +314,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     }
     
     func renderChess(with anchor: ARAnchor, and color: Int) {
-        guard let originAnchor = arSceneView.anchor(for: originNode!) else {print("no origin anchor"); return }
+        guard let originAnchor = ARview.anchor(for: originNode!) else {print("no origin anchor"); return }
         var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
         localTrans.y = 0.055
         localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
@@ -346,13 +349,12 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             MyChessInfo.canIPlaceChess = true
             return
         }
+        updatedAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: color)
         if color == 1 {
             originNode!.addChildNode(loadBlackChess(with: localTrans))
         } else {
             originNode!.addChildNode(loadWhiteChess(with: localTrans))
         }
-        updateAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: color)
-        
         if MyChessInfo.myChessNum >= 5 {
             if isMeWin(AIChessInfo.IndexArray) {
                 DispatchQueue.main.async {
@@ -367,7 +369,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                     self.setDeviceLabel(with: "AI回合")
                 }
                 MyChessInfo.canIPlaceChess = false
-                AITurn()
+                AITurn(isFirstStep: false)
                 return
             }
         } else {
@@ -376,23 +378,23 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                 self.setInfoLabel(with: "等待AI落子")
                 self.setDeviceLabel(with: "AI回合")
             }
-            AITurn()
+            AITurn(isFirstStep: false)
             return
         }
     }
     
     //Hit test function
-    @IBAction func handleTap(_ sender: UITapGestureRecognizer) {
+    @IBAction func handleViewBTap(_ sender: UITapGestureRecognizer) {
         if sender.state == .ended {
-            let location = sender.location(in: arSceneView)
-            guard let arRayCastQuery = arSceneView
+            let location = sender.location(in: ARview)
+            guard let arRayCastQuery = ARview
                 .raycastQuery(from: location,
                               allowing: .estimatedPlane,
                               alignment: .horizontal)
             else {
                 return
             }
-            guard let result = arSceneView.session.raycast(arRayCastQuery).first
+            guard let result = ARview.session.raycast(arRayCastQuery).first
             else {
                 return
             }
@@ -400,7 +402,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             if firstClick == false && canPlaceBoard {
                 //create and add chessboard anchor
                 let anchor = ARAnchor(name: Constants.chessBoardName, transform: result.worldTransform)
-                arSceneView.session.add(anchor: anchor)
+                ARview.session.add(anchor: anchor)
                 
                 //有时arkit会多次检测tap，防止程序崩溃，同时保证此时不会产生新的board
                 canPlaceBoard = false
@@ -413,10 +415,10 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                 //create and add chess anchor
                 if MyChessInfo.myChessColor == 1 {
                     let anchor = ARAnchor(name: Constants.blackChessName, transform: result.worldTransform)
-                    arSceneView.session.add(anchor: anchor)
+                    ARview.session.add(anchor: anchor)
                 } else if MyChessInfo.myChessColor == 2 {
                     let anchor = ARAnchor(name: Constants.whiteChessName, transform: result.worldTransform)
-                    arSceneView.session.add(anchor: anchor)
+                    ARview.session.add(anchor: anchor)
                 } else {
                     fatalError("cannot load chess when you dont have color!!")
                 }
@@ -439,7 +441,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         let indexOfY = index[1] - 4
         let coordinateOfX = Float(indexOfX) * 0.1
         let coordinateOfY = Float(indexOfY) * 0.1
-        updateAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: AIChessInfo.AIChessColor)
+        updatedAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: AIChessInfo.AIChessColor)
         let localTrans = simd_float4(coordinateOfX, 0.055, coordinateOfY, 1)
         if AIChessInfo.AIChessColor == 1 {
             originNode!.addChildNode(loadBlackChess(with: localTrans))
@@ -448,14 +450,27 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         }
     }
     
-    func AITurn() {
+    func AITurn(isFirstStep: Bool) {
+        if isFirstStep {
+            let nextStep = [4,4]
+            renderAIChess(with: nextStep)
+            updatedAIIndexArray(indexOfX: 4, indexOfY: 4, with: AIChessInfo.AIChessColor)
+            
+            MyChessInfo.canIPlaceChess = true
+            DispatchQueue.main.async {
+                self.setInfoLabel(with: "请您放置棋子")
+                self.setDeviceLabel(with: "您的回合")
+            }
+            return
+        }
+        
         let nextAIStep = AIstep()
         if nextAIStep == nil {
             //游戏结束
             print("你输了，ai胜利")
         } else {
-            guard let nextSteo = nextAIStep else { fatalError("nextStep数据异常") }
-            renderAIChess(with: nextSteo)
+            guard let nextStep = nextAIStep else { fatalError("nextStep数据异常") }
+            renderAIChess(with: nextStep)
             MyChessInfo.canIPlaceChess = true
             DispatchQueue.main.async {
                 self.setInfoLabel(with: "请您放置棋子")
@@ -472,4 +487,9 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         deviceLabel.text = string
     }
 
+}
+
+struct anotherConstants {
+    static let labelLength: CGFloat = 200
+    static let labelHeight: CGFloat = 30
 }
