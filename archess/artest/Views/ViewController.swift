@@ -37,7 +37,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     @IBOutlet weak var infoLabel: UILabel!
     
-    @IBOutlet weak var cameraCoordinateRelativePositionLabel: UILabel!
     
     
     
@@ -75,7 +74,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     //some conditional variable
     var alreadyAdd = false
-    var couldCollectFeature = false
     var firstClick = false
     
     //chessGameLogicVariable
@@ -90,7 +88,8 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     var anchorFromPeer: ARAnchor?
     var chessBoardAnchorFromPeer: ARAnchor?
-    var chessAnchorFromPeer: ARAnchor?
+    var blackChessAnchorFromPeer: ARAnchor?
+    var whiteChessAnchorFromPeer: ARAnchor?
     
     var eulerangleForSending: simd_float3?
     var peerEulerangle: simd_float3?
@@ -192,19 +191,9 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     override func viewDidLoad() {
         super.viewDidLoad()
 //        view.addSubview(imageView)
-        for family in UIFont.familyNames.sorted() {
-            let names = UIFont.fontNames(forFamilyName: family)
-            print(family, names)
-        }
         startup()
     }
     
-//    override func viewDidLayoutSubviews() {
-//        super.viewDidLayoutSubviews()
-//        DispatchQueue.main.asyncAfter(deadline: .now()+1, execute: {
-//
-//        })
-//    }
     
     
     
@@ -216,17 +205,10 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             fatalError("do not support ar world tracking")
         }
         
-        //disable some buttons
-        
-        //set ARSession
-        //niSession?.setARSession(sceneView.session)
         
         //set delegate
         sceneView.session.delegate = self
-        sceneView.automaticallyUpdatesLighting = false
-        
         //add light to show color
-        sceneView.autoenablesDefaultLighting = true
         sceneView.automaticallyUpdatesLighting = true
         
         //start ar session
@@ -247,6 +229,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         //sceneView.debugOptions = ARSCNDebugOptions.showFeaturePoints
         
         setupCoachingOverlay()
+        
         
         
         //disable idletimer cause user may not touch screen for a long time
@@ -336,8 +319,10 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         }
         mpc?.invalidate()
         mpc?.start()
-        setInfoLabel(with: "正在寻找同伴")
-        setDeviceLabel(with: "未连接")
+        DispatchQueue.main.async {
+            self.setInfoLabel(with: "正在寻找同伴")
+            self.setDeviceLabel(with: "未连接")
+        }
     }
     
     func startupNI() {
@@ -378,6 +363,8 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 self.mpc?.suspend()
                 self.mpc = nil
             }
+            resetMyChessInfo()
+            self.originNode = nil
             
             self.performSegue(withIdentifier: "exitToMain", sender: self)
         })
@@ -400,10 +387,12 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     func restart() {
         sendCodeToPeer(with: 8)
-        MyChessInfo.couldInit = true
-        MyChessInfo.canIPlaceChess = false
-        firstClick = false
-        canPlaceBoard = true
+        DispatchQueue.main.async {
+            resetMyChessInfo()
+            self.firstClick = false
+            self.canPlaceBoard = true
+            self.originNode = nil
+        }
         
         
         let configuration = ARWorldTrackingConfiguration()
@@ -415,10 +404,11 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     }
     
     func restartByCode() {
-        MyChessInfo.couldInit = true
-        MyChessInfo.canIPlaceChess = false
-        firstClick = false
-        canPlaceBoard = true
+        DispatchQueue.main.async {
+            resetMyChessInfo()
+            self.firstClick = false
+            self.canPlaceBoard = true
+        }
         
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
@@ -471,80 +461,82 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     //渲染器
     func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
+        
         //渲染棋盘
         if let name = anchor.name, name.hasPrefix(Constants.chessBoardName) {
+            node.addChildNode(renderChessBoard())
             DispatchQueue.main.async {
-                self.renderChessBoard(for: node)
                 self.infoLabel.text = "渲染结束"
             }
             return
         }
+        if let name = anchor.name, name.hasPrefix(Constants.peerChessBoardName) {
+            node.addChildNode(renderChessBoard())
+            DispatchQueue.main.async {
+                self.infoLabel.text = "渲染结束"
+            }
+            return
+        }
+        if let name = anchor.name, name.hasPrefix(Constants.blackChessName) {
+            renderChess(with: anchor, and: 1)
+        }
+        if let name = anchor.name, name.hasPrefix(Constants.whiteChessName) {
+            renderChess(with: anchor, and: 2)
+        }
         //渲染同伴
-        if let participant = anchor as? ARParticipantAnchor {
+        if let participantAnchor = anchor as? ARParticipantAnchor {
+            DispatchQueue.main.async {
+                print("did add participant")
+            }
             node.addChildNode(loadModel())
             return
         }
     }
     
+    func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+        
+    }
+    
     //第一种渲染方法
-    func renderChessBoard(for node: SCNNode) {
+    func renderChessBoard() -> SCNNode {
         guard let url = Bundle.main.url(forResource: "chessBoard", withExtension: "usdz") else { fatalError("can not find resource url") }
         
         guard let boardNode = SCNReferenceNode(url: url) else { fatalError("cannot create chessboard node") }
         originNode = boardNode
         boardNode.load()
-        
         //调整棋盘参数
         boardNode.scale = SCNVector3(0.3,0.3,0.3)
         //添加棋盘节点
-        node.addChildNode(originNode!)
         MyChessInfo.couldInit = true
         initChessGame()
+        return boardNode
     }
-    
-//    func loadBoardAsScene()  {
-//        //第二种渲染方法
-//        let path = FileManager.default.urls(for: .documentDirectory,
-//                                             in: .userDomainMask)[0]
-//        .appendingPathComponent("chessBoard.usdz")
-//        let asset = MDLAsset(url: path)
-//
-//        asset.loadTextures()
-//        let scene = SCNScene(mdlAsset: asset)
-//        sceneView.scene = scene
-//
-//    }
     
     //渲染棋子
     func renderChess(with anchor: ARAnchor, and color: Int) {
         guard let originAnchor = sceneView.anchor(for: originNode!) else {print("no origin anchor"); return }
         var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
-        localTrans.y = 0.058
+        localTrans.y = 0.055
         localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
         localTrans.z = Float(lroundf(localTrans.z * Constants.scaleFromWorldToLocal * 10)) / Float(10)
         
-        //for testing
-        print("\(localTrans.x)")
-        print("\(localTrans.z)")
         
         let indexOfX: Int = lroundf(localTrans.x * 10)
         let indexOfY: Int = lroundf(localTrans.z * 10)
         
-        //for testing
-//            print("\(indexOfX)")
-//            print("\(indexOfY)")
-        
         //判断是否出界
         if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
-            setInfoLabel(with: "放置位置超出范围")
-            setDeviceLabel(with: "您的回合，请重新放置")
+            DispatchQueue.main.async {
+                self.setInfoLabel(with: "放置位置超出范围")
+            }
             MyChessInfo.canIPlaceChess = true
             return
         }
         //判断是否已经落子
         if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == true {
-            setInfoLabel(with: "该处已经有棋子")
-            setDeviceLabel(with: "您的回合，请重新放置")
+            DispatchQueue.main.async {
+                self.setInfoLabel(with: "该处已经有棋子")
+            }
             MyChessInfo.canIPlaceChess = true
             return
         }
@@ -553,42 +545,86 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         } else {
             originNode!.addChildNode(loadWhiteChess(with: localTrans))
         }
-        updateIndexArray(indexOfX: indexOfY, indexOfY: indexOfY, with: color)
-        
+        updateIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: color)
+        print("渲染了\(color)色棋子一枚")
         if MyChessInfo.myChessNum >= 5 {
             if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
-                setInfoLabel(with: "您胜利了！")
-                setDeviceLabel(with: "游戏结束")
+                MyChessInfo.canIPlaceChess = false
                 sendCodeToPeer(with: 7)
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "您胜利了！")
+                    self.setDeviceLabel(with: "游戏结束")
+                }
                 return
             } else {
-                setInfoLabel(with: "等待对方落子")
-                sendCodeToPeer(with: 6)
-                
+                MyChessInfo.canIPlaceChess = false
+                //不传输anchor，直接传输坐标
+                let indexArray: [Int] = [indexOfX, indexOfY]
+                guard let indexData = try? JSONEncoder().encode(indexArray) else { fatalError("can not encode indexData") }
+                guard let multipeer = mpc else { fatalError("do not connect with peer") }
+                multipeer.sendDataToAllPeers(data: indexData)
+                //己方UI调整
                 DispatchQueue.main.async {
-                    self.myTurnLabel.alpha = 0.2
-                    self.peerTurnLabel.alpha = 1
+                    self.setInfoLabel(with: "等待对方落子")
                     self.rotateView(for: self.playImageView)
+                    self.myTurnLabel.alpha = Constants.peerTurnAlpha
+                    self.peerTurnLabel.alpha = Constants.myTurnAlpha
                 }
+                //通知对方UI调整
+                sendCodeToPeer(with: 6)
                 return
             }
         } else {
-            setInfoLabel(with: "等待对方落子")
-            setDeviceLabel(with: "对方回合")
-            sendCodeToPeer(with: 6)
-            
+            MyChessInfo.canIPlaceChess = false
+            //不传输anchor，直接传输坐标
+            let indexArray: [Int] = [indexOfX, indexOfY]
+            guard let indexData = try? JSONEncoder().encode(indexArray) else { fatalError("can not encode indexData") }
+            guard let multipeer = mpc else { fatalError("do not connect with peer") }
+            multipeer.sendDataToAllPeers(data: indexData)
+            //己方UI调整
             DispatchQueue.main.async {
-                self.myTurnLabel.alpha = 0.2
-                self.peerTurnLabel.alpha = 1
+                self.setInfoLabel(with: "等待对方落子")
+                self.setDeviceLabel(with: "对方回合")
                 self.rotateView(for: self.playImageView)
+                self.myTurnLabel.alpha = Constants.peerTurnAlpha
+                self.peerTurnLabel.alpha = Constants.myTurnAlpha
             }
+            sendCodeToPeer(with: 6)
             return
         }
     }
     
+    //渲染同伴的棋子
+    func renderChessWithIndex(_ index: [Int]) {
+        //坐标换算
+        let xAxis = Float(index[0])/10.0
+        let zAxis = Float(index[1])/10.0
+        let localTrans = simd_float4(xAxis, 0.055, zAxis, 1)
+        
+        //渲染
+        if MyChessInfo.myChessColor == 1 {
+            originNode!.addChildNode(loadWhiteChess(with: localTrans))
+            updateIndexArray(indexOfX: index[0], indexOfY: index[1], with: 2)
+        }
+        if MyChessInfo.myChessColor == 2 {
+            originNode!.addChildNode(loadBlackChess(with: localTrans))
+            updateIndexArray(indexOfX: index[0], indexOfY: index[1], with: 1)
+        }
+        //渲染后才可以放置自己的棋子
+        MyChessInfo.canIPlaceChess = true
+        DispatchQueue.main.async {
+            self.rotateView(for: self.playImageView)
+            self.setInfoLabel(with: "请您放置棋子")
+            
+            self.myTurnLabel.alpha = Constants.myTurnAlpha
+            self.peerTurnLabel.alpha = Constants.peerTurnAlpha
+        }
+        print("rendered!")
+    }
+    
     //load object model
     func loadModel() -> SCNNode {
-        let sphere = SCNSphere(radius: 0.05)
+        let sphere = SCNSphere(radius: 0.04)
         sphere.firstMaterial?.diffuse.contents = "worldmap.jpg"
         let node = SCNNode(geometry: sphere)
         return node
@@ -642,7 +678,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             else { fatalError("Unexpectedly failed to encode collaboration data.") }
             // Use reliable mode if the data is critical, and unreliable mode if the data is optional.
             let dataIsCritical = data.priority == .critical
-            multipeerSession.sendDataToAllPeers(data: encodedData)
+            multipeerSession.sendDataWithPriority(encodedData, priority: dataIsCritical)
         } else {
             print("Deferred sending collaboration to later because there are no peers.")
         }
@@ -716,64 +752,19 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
         camera = frame.camera
         
-        //decrepted 显示相机参数
-//        DispatchQueue.main.async {
-//            self.eularangleLabel.text = "欧拉角 x " + String(format: "%.2f", eularAngles.x) + " "
-//                                    + "y " + String(format: "%.2f", eularAngles.y) + " "
-//                                    + "z " + String(format: "%.2f", eularAngles.z)
-//            if let worldPositions = session.currentFrame?.camera.transform {
-//                let x: Float = worldPositions.columns.3.x
-//                let y: Float = worldPositions.columns.3.y
-//                let z: Float = worldPositions.columns.3.z
-//                self.worldPositionLabel.text = "距离世界原点 x:" + String(format: "%.2f", x)
-//                    + String("y:") + String(format: "%.2f", y)
-//                    + String("z:") + String(format: "%.2f", z)
-//                sendMyPositionToPeer(with: simd_make_float3(x, y, z))
-//            }
-//        }
-        guard let multipeer = mpc else { return }
-        
-        switch frame.worldMappingStatus {
-        case .notAvailable, .limited:
-            return
-        case .extending:
-            return
-        case .mapped:
-            return
-        @unknown default:
-            return
-        }
-
     }
     
     //ARSessionDelegate Monitoring NearbyObjects
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
         for anchor in anchors {
             if let participantAnchor = anchor as? ARParticipantAnchor {
-                //messageLabel.displayMessage("Established joint experience with a peer.")
                 peerTransFromARKit = participantAnchor.transform
-                //add the peer anchor to the session
-                sceneView.session.add(anchor: participantAnchor)
-                
-                print("do receive peer anchor in session")
-            }
-            if anchor.name == Constants.blackChessName {
-                renderChess(with: anchor, and: 1)
-            }
-            if anchor.name == Constants.whiteChessName {
-                renderChess(with: anchor, and: 2)
             }
         }
     }
     
     
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
-        for anchor in anchors {
-            if anchor.name == "peer" {
-                session.remove(anchor: anchor)
-                session.add(anchor: anchor)
-            }
-        }
     }
     
     //handler to connect
@@ -781,23 +772,12 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     var mapProvider: MCPeerID?
     //handler to data receive
     func dataReceiveHandler(data: Data, peer: MCPeerID) {
+        //经测试 可以收到collaborationdata
         if let collaborationData = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARSession.CollaborationData.self, from: data) {
             sceneView.session.update(with: collaborationData)
         }
         
-        if let worldmap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data)
-        {
-            let configuration = ARWorldTrackingConfiguration()
-            configuration.initialWorldMap = worldmap
-            configuration.planeDetection = .horizontal
-            
-            sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
-            
-            mapProvider = peer
-        }
-
-        
-        
+        //NI通信token
         if let discoverytoken = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NIDiscoveryToken.self, from: data) {
             peerDidShareDiscoveryToken(peer: peer, token: discoverytoken)
         }
@@ -809,25 +789,32 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 canPlaceBoard = false
                 setInfoLabel(with: "渲染完成，等待初始化")
             } else {
-                guard let chessAnchor = chessAnchorFromPeer else { print("未收到棋子anchor信息"); return }
-                addPeerAnchor(with: chessAnchor, and: pos)
+                if MyChessInfo.myChessColor == 1 {
+                    guard let peerChessAnchor = whiteChessAnchorFromPeer else { fatalError("no peer white chess anchor") }
+                    addPeerAnchor(with: peerChessAnchor, and: pos)
+                } else if MyChessInfo.myChessColor == 2 {
+                    guard let peerChessAnchor = blackChessAnchorFromPeer else { fatalError("no peer black chess anchor") }
+                    addPeerAnchor(with: peerChessAnchor, and: pos)
+                }
             }
-            
-            
-               
-                
+        }
+        if let index = try? JSONDecoder().decode([Int].self, from: data) {
+            print("\(index)")
+            renderChessWithIndex(index)
         }
         if let anchor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARAnchor.self, from: data) {
+            if let anchor = anchor as? ARParticipantAnchor {
+                anchorFromPeer = anchor
+            }
             if anchor.name == Constants.chessBoardName {
-                chessBoardAnchorFromPeer = anchor
+                chessBoardAnchorFromPeer = ARAnchor(name: Constants.peerChessBoardName, transform: anchor.transform)
             }
             if anchor.name == Constants.blackChessName {
-                chessAnchorFromPeer = anchor
+                blackChessAnchorFromPeer = ARAnchor(name: Constants.blackChessName, transform: anchor.transform)
             }
             if anchor.name == Constants.whiteChessName {
-                chessAnchorFromPeer = anchor
+                whiteChessAnchorFromPeer = ARAnchor(name: Constants.whiteChessName, transform: anchor.transform)
             }
-            anchorFromPeer = anchor
         }
         
         if let code = try? JSONDecoder().decode(Int.self, from: data) {
@@ -835,22 +822,27 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             case 1:
                 firstClick = true
                 MyChessInfo.couldInit = false
-                setInfoLabel(with: "初始化已完成")
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "初始化已完成")
+                }
                 return
             case 2:
-                setInfoLabel(with: "等待对方落子")
-                myTurnLabel.alpha = 0.2
-                peerTurnLabel.alpha = 1
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "等待对方落子")
+                    self.myTurnLabel.alpha = Constants.peerTurnAlpha
+                    self.peerTurnLabel.alpha = Constants.myTurnAlpha
+                }
                 MyChessInfo.myChessOrder = 2
                 return
             case 3:
                 MyChessInfo.canIPlaceChess = true
-                setInfoLabel(with: "请您放置棋子")
                 //rotate play image
-                
-                rotateView(for: playImageView)
-                myTurnLabel.alpha = 1
-                peerTurnLabel.alpha = 0.2
+                DispatchQueue.main.async {
+                    self.rotateView(for: self.playImageView)
+                    self.setInfoLabel(with: "请您放置棋子")
+                    self.myTurnLabel.alpha = Constants.myTurnAlpha
+                    self.peerTurnLabel.alpha = Constants.peerTurnAlpha
+                }
                 MyChessInfo.myChessOrder = 1
                 return
             case 4:
@@ -861,16 +853,19 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 return
             case 6:
                 MyChessInfo.canIPlaceChess = true
-                setInfoLabel(with: "请您放置棋子")
-                
-                rotateView(for: playImageView)
-                myTurnLabel.alpha = 1
-                peerTurnLabel.alpha = 0.2
-                
+                DispatchQueue.main.async {
+                    self.myTurnLabel.alpha = Constants.myTurnAlpha
+                    self.peerTurnLabel.alpha = Constants.peerTurnAlpha
+                    self.rotateView(for: self.playImageView)
+                    self.setInfoLabel(with: "请您放置棋子")
+                }
                 return
             case 7:
-                setInfoLabel(with: "您输了！")
-                setDeviceLabel(with: "游戏结束！")
+                MyChessInfo.canIPlaceChess = false
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "您输了！")
+                    self.setDeviceLabel(with: "游戏结束！")
+                }
                 return
                 
             default:
@@ -879,14 +874,10 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             
         }
         
-        //unused
-//        if let eulerangle = try? JSONDecoder().decode(simd_float3.self, from: data) {
-//            peerEulerangle = eulerangle
-//            resetWorldOrigin(with: eularangle, and: peerEulerangle)
-//        }
     }
     
     func addPeerAnchor(with anchor: ARAnchor, and pos: simd_float4) {
+        //使用NI数据进行两次位姿转换 Pcam->MyCam->MyWorld
         //使用NI数据进行两次位姿转换 Pcam->MyCam->MyWorld
         guard let cam = camera else { return }
         guard let direction = peerDirection else { return }
@@ -910,13 +901,16 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         
         let newAnchor = ARAnchor(name: anchor.name!, transform: objTrans)
         
+        //如果是同伴传来的棋盘 直接添加anchor进行渲染
+        if anchor.name == Constants.peerChessBoardName {
+            let peerChessBoardAnchor = ARAnchor(name: "peerBoard", transform: newAnchor.transform)
+            sceneView.session.add(anchor: peerChessBoardAnchor)
+            return
+        }
+        
         print("成功添加peer传来的" + "\(anchor.name!)" + "物体")
         sceneView.session.add(anchor: newAnchor)
-    }
-    
-    func resetWorldOrigin(with myEuler: simd_float3, and peerEuler: simd_float3) {
-        let newWorldTransform = correctPose(with: peerEuler, using: myEuler)
-        sceneView.session.setWorldOrigin(relativeTransform: newWorldTransform)
+        
     }
     
     //receive peer token
@@ -944,10 +938,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             // Create a valid configuration.
             startup()
         }
-        DispatchQueue.main.async {
-            //self.infoLabel.text = "已连接"
-            //self.infoLabel.text = "链接对象" + self.peerDisplayName!
-        }
     }
     
     
@@ -960,9 +950,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     //Hit test function
     @IBAction func handleTap(_ sender: UITapGestureRecognizer) {
-        
-        
-        
         if sender.state == .ended {
             let location = sender.location(in: sceneView)
             guard let arRayCastQuery = sceneView
@@ -1008,28 +995,33 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 
             }
             if firstClick == true && MyChessInfo.canIPlaceChess {
+                MyChessInfo.canIPlaceChess = false
+                setInfoLabel(with: "等待")
                 //create and add chess anchor
-                let anchor = ARAnchor(name: Constants.blackChessName, transform: result.worldTransform)
-                
-                
-                sceneView.session.add(anchor: anchor)
-                guard let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
+                let anchor: ARAnchor?
+                if MyChessInfo.myChessColor == 1 {
+                    anchor = ARAnchor(name: Constants.blackChessName, transform: result.worldTransform)
+                } else if MyChessInfo.myChessColor == 2 {
+                    anchor = ARAnchor(name: Constants.whiteChessName, transform: result.worldTransform)
+                } else {
+                    fatalError("can not touch before choosing a color")
+                }
+                //add anchor in scene
+                sceneView.session.add(anchor: anchor!)
+                guard let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: anchor!, requiringSecureCoding: true)
                 else { fatalError("can't encode anchor") }
                 //send anchor data
                 self.mpc?.sendDataToAllPeers(data: anchorData)
                 
                 guard let cam = self.camera else { return }
-                
-                //unused euler data
-    //            guard let eulerData = try? JSONEncoder().encode(cam.eulerAngles) else { fatalError("dont have your cam") }
-    //            self.mpc?.sendDataToAllPeers(data: eulerData)
-                
+                //send pos data
                 let pos = cam.transform.inverse * result.worldTransform.columns.3
                 guard let posData = try? JSONEncoder().encode(pos) else { fatalError("cannot encode simd_float3x3") }
                 self.mpc?.sendDataToAllPeers(data: posData)
                 
-                MyChessInfo.canIPlaceChess = false
-                setInfoLabel(with: "棋子渲染中")
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "棋子渲染中")
+                }
             }
             
             
@@ -1037,18 +1029,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
 
            
         }
-    }
-    
-    
-    @IBAction func shareSession(_ sender: Any) {
-        sceneView.session.getCurrentWorldMap(completionHandler: {
-            worldmap, error in
-            guard let map = worldmap else { print("Error: \(error!.localizedDescription)"); return }
-            guard let data = try? NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true) else {
-                fatalError("Cannot archive world map!")
-            }
-            self.mpc?.sendDataToAllPeers(data: data)
-        })
     }
     
     //get distance&direction state
@@ -1094,28 +1074,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         peerDirection = direction
         guard let distance = peer.distance else { return }
         peerDistance = distance
-        
-//        DispatchQueue.main.async {
-//            self.distanceLabel.text = "距离:" + String(format: "%.2f", distance)
-//            self.directionLabel.text = "方向 x:" + String(format: "%.2f", direction.x) + " "
-//            + "y:" + String(format: "%.2f", direction.y) + " "
-//            + "z:" + String(format: "%.2f", direction.z)
-//        }
-        
-        //使用ar的collaboration数据时无法使用该变量
-//        guard let transform = niSession?.worldTransform(for: peer) else { return }
-//        peerTrans = transform
-//        print("NI data is ready")
-    }
-    
-    
-    //NI的方向数据
-    func updateCameraCoordinateRelativePositionLabel(_ direction: SCNVector3) {
-        DispatchQueue.main.async {
-            self.cameraCoordinateRelativePositionLabel.text = String("East:") + String(format: "%.2f", direction.x)
-            + String("Up:") + String(format: "%.2f", direction.y)
-            + String("South:") + String(format: "%.2f", direction.z)
-        }
     }
     
     
@@ -1129,102 +1087,14 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         self.mpc?.sendDataToAllPeers(data: data)
     }
     
-    //animation function example
-//    private func animated(from currentState: DistanceDirectionState, to nextState: DistanceDirectionState, with peer: NINearbyObject) {
-//    }
-//                dx = relativeDirection.x
-//                dy = relativeDirection.y
-//                dz = relativeDirection.z
-//                // some label data
-//                let azumith = azumith(from: relativeDirection)
-//                let elevation = elevation(from: relativeDirection)
-//
-//                let Dx: Float = dx! * relativeDistance
-//                let Dy: Float = dy! * relativeDistance
-//                let Dz: Float = dz! * relativeDistance
-//
-//                cameraCoordinateRelativePositionLabel.text = String("Right") + String(format: "%.2f", Dx)
-//                                                            + String("Up") + String(format: "%.2f", Dy)
-//                                                            + String("Front") + String(format: "%.2f", Dz)
-//
-//                distanceLabel.text = String(format: "%.3f", relativeDistance)
-                
-                //how we put anchor into peer's device
-//                if let eularAngles, let camera {
-//                    let angles = relativePosition(eularAngle: eularAngles, azumith: azumith, elevation: elevation)
-//                    let cameraTransform = camera.transform
-//                    let relativePosition = simd_float3(relativeDistance*cos(angles.y)*cos(angles.x),
-//                                                       relativeDistance*cos(angles.y)*sin(angles.x),
-//                                                       relativeDistance*sin(angles.y))
-//                    let peerTransform = translation(from: cameraTransform, with: relativePosition)
-//                    peerAnchor = ARAnchor(name: "peer", transform: peerTransform)
-//                    if !alreadyAdd && peerAnchor != nil {
-//                        scenevView.session.add(anchor: peerAnchor!)
-//                        alreadyAdd = true
-//                    }
-//                }
-                
-                
-//                if elevation < 0 {
-//                    DetailDownArrow.alpha = 1.0
-//                    DetailUpArrow.alpha = 0.0
-//                } else {
-//                    DetailDownArrow.alpha = 0.0
-//                    DetailUpArrow.alpha = 1.0
-//                }
-//
-//            } else {
-//                distanceLabel.text = String(format: "0.3f", relativeDistance)
-//                print("no direction data")
-//            }
-//        } else {
-//            print("no distance data")
-//        }
     internal func setInfoLabel(with string: String) {
-        DispatchQueue.main.async {
-            self.infoLabel.text = string
-        }
+        self.infoLabel.text = string
     }
     
     internal func setDeviceLabel(with string: String) {
-        DispatchQueue.main.async {
-            self.deviceLable.text = string
-        }
+        self.deviceLable.text = string
     }
-    
 
-    
-    
-    
-    
-    
-    @IBAction func collectFeature(_ sender: Any) {
-        couldCollectFeature = true
-    }
-    
-    
-    
-    
-    //use coachingoverlayview to reset tracking
-    @IBAction func resetTracking() {
-        guard let configuration = sceneView.session.configuration as? ARWorldTrackingConfiguration else { print("A configuration is required"); return }
-        configuration.planeDetection = [.horizontal, .vertical]
-        sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
-    }
-    
-    
-    
-    //清理自己创造的棋子和棋盘
-    @IBAction func removeAllAnchorsYouCreated(_ sender: UIButton?) {
-        guard let frame = sceneView.session.currentFrame else { return }
-        for anchor in frame.anchors {
-            guard let anchorSessionID = anchor.sessionIdentifier else { continue }
-            if anchorSessionID.uuidString == sceneView.session.identifier.uuidString {
-                sceneView.session.remove(anchor: anchor)
-            }
-        }
-        //couldCreateObj = true
-    }
     
     private func removeAllAnchorsOriginatingFromARSessionWithID(_ identifier: String) {
         guard let frame = sceneView.session.currentFrame else { return }
@@ -1254,9 +1124,11 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         if MyChessInfo.couldInit {
             //randomly pick order
             MyChessInfo.myChessOrder = randomlyPickChessOrder()
-            view.addSubview(myTurnLabel)
-            view.addSubview(peerTurnLabel)
-            view.addSubview(playImageView)
+            DispatchQueue.main.async {
+                self.view.addSubview(self.myTurnLabel)
+                self.view.addSubview(self.peerTurnLabel)
+                self.view.addSubview(self.playImageView)
+            }
             if MyChessInfo.myChessOrder == 1 {
                 code1 = 2
             }
@@ -1274,23 +1146,25 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             }
             
             MyChessInfo.couldInit = false
-           
-            print("\(code1!),\(code2!)")
             
             initCodeReceiver(code1!, code2!)
             
             
             if MyChessInfo.myChessOrder == 1 {
                 MyChessInfo.canIPlaceChess = true
-                setInfoLabel(with: "请您落子")
-                peerTurnLabel.alpha = 0.2
-                myTurnLabel.alpha = 1
-                rotateView(for: playImageView)
+                DispatchQueue.main.async {
+                    self.peerTurnLabel.alpha = 0.2
+                    self.myTurnLabel.alpha = 1
+                    self.setInfoLabel(with: "请您落子")
+                    self.rotateView(for: self.playImageView)
+                }
             }
             if MyChessInfo.myChessOrder == 2 {
-                setInfoLabel(with: "等待对方落子")
-                myTurnLabel.alpha = 0.2
-                peerTurnLabel.alpha = 1
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "等待对方落子")
+                    self.myTurnLabel.alpha = 0.2
+                    self.peerTurnLabel.alpha = 1
+                }
             }
         }
     }
@@ -1311,6 +1185,7 @@ struct Constants {
     
     //ChessBoard&Chess Name
     static let chessBoardName = "ChessBoard"
+    static let peerChessBoardName = "peerBoard"
     
   
     
@@ -1325,6 +1200,6 @@ struct Constants {
     static let scaleFromWorldToLocal: Float = 3.3
     
     //UI界面参数
-    static let myLabelAlpha = 1
-    static let peerLabelAlpha = 0.2
+    static let myTurnAlpha = 1.0
+    static let peerTurnAlpha = 0.2
 }
