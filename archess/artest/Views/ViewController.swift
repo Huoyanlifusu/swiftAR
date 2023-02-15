@@ -103,12 +103,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     //var of chessGame
     var originNode: SCNNode?
     
-    //启动画面 暂时停用
-//    var imageView: UIImageView = {
-//        let imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
-//        imageView.image = UIImage(named: "logo")
-//        return imageView
-//    }()
     
     //退出按钮
     private let exitButton: UIButton = {
@@ -182,8 +176,15 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         return view
     }()
     
-    func rotateView(for imageView: UIImageView) {
-        imageView.transform = CGAffineTransform(rotationAngle: .pi)
+    
+    func rotateAnimation(with angle: CGFloat) {
+        let animator = UIViewPropertyAnimator(duration: 1,
+                                              curve: .linear,
+                                              animations: { [unowned self] in
+            self.playImageView.transform = CGAffineTransform(rotationAngle: angle)
+        })
+        
+        animator.startAnimation()
     }
     
     
@@ -546,7 +547,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             originNode!.addChildNode(loadWhiteChess(with: localTrans))
         }
         updateIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: color)
-        print("渲染了\(color)色棋子一枚")
+        
         if MyChessInfo.myChessNum >= 5 {
             if WhoIsWinner(MyChessInfo.IndexArray) == MyChessInfo.myChessColor {
                 MyChessInfo.canIPlaceChess = false
@@ -565,8 +566,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 multipeer.sendDataToAllPeers(data: indexData)
                 //己方UI调整
                 DispatchQueue.main.async {
-                    self.setInfoLabel(with: "等待对方落子")
-                    self.rotateView(for: self.playImageView)
+                    self.rotateAnimation(with: 0)
                     self.myTurnLabel.alpha = Constants.peerTurnAlpha
                     self.peerTurnLabel.alpha = Constants.myTurnAlpha
                 }
@@ -583,9 +583,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             multipeer.sendDataToAllPeers(data: indexData)
             //己方UI调整
             DispatchQueue.main.async {
-                self.setInfoLabel(with: "等待对方落子")
-                self.setDeviceLabel(with: "对方回合")
-                self.rotateView(for: self.playImageView)
+                self.rotateAnimation(with: 0)
                 self.myTurnLabel.alpha = Constants.peerTurnAlpha
                 self.peerTurnLabel.alpha = Constants.myTurnAlpha
             }
@@ -613,8 +611,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         //渲染后才可以放置自己的棋子
         MyChessInfo.canIPlaceChess = true
         DispatchQueue.main.async {
-            self.rotateView(for: self.playImageView)
-            self.setInfoLabel(with: "请您放置棋子")
+            self.rotateAnimation(with: .pi)
             
             self.myTurnLabel.alpha = Constants.myTurnAlpha
             self.peerTurnLabel.alpha = Constants.peerTurnAlpha
@@ -787,7 +784,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 addPeerAnchor(with: boardAnchor, and: pos)
                 
                 canPlaceBoard = false
-                setInfoLabel(with: "渲染完成，等待初始化")
             } else {
                 if MyChessInfo.myChessColor == 1 {
                     guard let peerChessAnchor = whiteChessAnchorFromPeer else { fatalError("no peer white chess anchor") }
@@ -822,13 +818,9 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             case 1:
                 firstClick = true
                 MyChessInfo.couldInit = false
-                DispatchQueue.main.async {
-                    self.setInfoLabel(with: "初始化已完成")
-                }
                 return
             case 2:
                 DispatchQueue.main.async {
-                    self.setInfoLabel(with: "等待对方落子")
                     self.myTurnLabel.alpha = Constants.peerTurnAlpha
                     self.peerTurnLabel.alpha = Constants.myTurnAlpha
                 }
@@ -838,8 +830,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 MyChessInfo.canIPlaceChess = true
                 //rotate play image
                 DispatchQueue.main.async {
-                    self.rotateView(for: self.playImageView)
-                    self.setInfoLabel(with: "请您放置棋子")
+                    self.rotateAnimation(with: .pi)
                     self.myTurnLabel.alpha = Constants.myTurnAlpha
                     self.peerTurnLabel.alpha = Constants.peerTurnAlpha
                 }
@@ -856,8 +847,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 DispatchQueue.main.async {
                     self.myTurnLabel.alpha = Constants.myTurnAlpha
                     self.peerTurnLabel.alpha = Constants.peerTurnAlpha
-                    self.rotateView(for: self.playImageView)
-                    self.setInfoLabel(with: "请您放置棋子")
+                    self.rotateAnimation(with: .pi)
                 }
                 return
             case 7:
@@ -996,7 +986,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             }
             if firstClick == true && MyChessInfo.canIPlaceChess {
                 MyChessInfo.canIPlaceChess = false
-                setInfoLabel(with: "等待")
                 //create and add chess anchor
                 let anchor: ARAnchor?
                 if MyChessInfo.myChessColor == 1 {
@@ -1019,9 +1008,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 guard let posData = try? JSONEncoder().encode(pos) else { fatalError("cannot encode simd_float3x3") }
                 self.mpc?.sendDataToAllPeers(data: posData)
                 
-                DispatchQueue.main.async {
-                    self.setInfoLabel(with: "棋子渲染中")
-                }
             }
             
             
@@ -1155,15 +1141,14 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 DispatchQueue.main.async {
                     self.peerTurnLabel.alpha = 0.2
                     self.myTurnLabel.alpha = 1
-                    self.setInfoLabel(with: "请您落子")
-                    self.rotateView(for: self.playImageView)
+                    self.rotateAnimation(with: .pi)
                 }
             }
             if MyChessInfo.myChessOrder == 2 {
                 DispatchQueue.main.async {
-                    self.setInfoLabel(with: "等待对方落子")
                     self.myTurnLabel.alpha = 0.2
                     self.peerTurnLabel.alpha = 1
+                    
                 }
             }
         }

@@ -85,6 +85,16 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         return button
     }()
     
+    private let myTurnLabel: UILabel = {
+        let label = UILabel(frame: CGRect(x: 0,
+                                          y: 0,
+                                          width: 180,
+                                          height: 30))
+        label.font = UIFont(name: "hongleisim-Regular", size: 30)
+        label.text = "您的回合"
+        return label
+    }()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
@@ -160,12 +170,16 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                                      height: 60)
         restartButton.addTarget(self, action: #selector(didRestart), for: .touchUpInside)
         //label
+        myTurnLabel.frame = CGRect(x: 50,
+                                   y: 30,
+                                   width: 180,
+                                   height: 30)
         infoLabel.frame = CGRect(x: view.frame.size.width/2 - 45,
-                                 y: view.frame.size.height/2 - 200,
+                                 y: view.frame.size.height - 100,
                                  width: anotherConstants.labelLength,
                                  height: anotherConstants.labelHeight)
         deviceLabel.frame = CGRect(x: view.frame.size.width/2 - 45,
-                                   y: view.frame.size.height/2 - 280,
+                                   y: view.frame.size.height - 50,
                                    width: anotherConstants.labelLength,
                                    height: anotherConstants.labelHeight)
     }
@@ -244,8 +258,11 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     }
     
     func initChessGame() {
-        view.addSubview(infoLabel)
-        view.addSubview(deviceLabel)
+        DispatchQueue.main.async {
+            self.view.addSubview(self.myTurnLabel)
+            self.view.addSubview(self.infoLabel)
+            self.view.addSubview(self.deviceLabel)
+        }
         if MyChessInfo.couldInit {
             //randomly pick order
             MyChessInfo.myChessOrder = randomlyPickChessOrder()
@@ -257,13 +274,17 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                  
             if MyChessInfo.myChessOrder == 1 {
                 MyChessInfo.canIPlaceChess = true
-                setInfoLabel(with: "请您落子")
-                setDeviceLabel(with: "您的回合")
+                DispatchQueue.main.async {
+                    self.myTurnLabel.alpha = anotherConstants.myTurnAlpha
+                    self.setInfoLabel(with: "请您落子")
+                }
             }
             if MyChessInfo.myChessOrder == 2 {
+                DispatchQueue.main.async {
+                    self.setInfoLabel(with: "请您等待")
+                    self.myTurnLabel.alpha = anotherConstants.AITurnAlpha
+                }
                 AITurn(isFirstStep: true)
-                setInfoLabel(with: "等待对方落子")
-                setDeviceLabel(with: "对方回合")
             }
         }
         AIInitial(with: AIChessInfo.level)
@@ -296,9 +317,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     var count: Int = 0
     //monitoring 30fps update
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        
         camera = frame.camera
-
     }
     
     //ARSessionDelegate Monitoring NearbyObjects
@@ -335,7 +354,6 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
             DispatchQueue.main.async {
                 self.setInfoLabel(with: "放置位置超出范围")
-                self.setDeviceLabel(with: "您的回合，请重新放置")
             }
             MyChessInfo.canIPlaceChess = true
             return
@@ -344,16 +362,19 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == true {
             DispatchQueue.main.async {
                 self.setInfoLabel(with: "该处已经有棋子")
-                self.setDeviceLabel(with: "您的回合，请重新放置")
             }
             MyChessInfo.canIPlaceChess = true
             return
         }
         updatedAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: color)
         if color == 1 {
+            AIChessInfo.AIChessColor = 2
             originNode!.addChildNode(loadBlackChess(with: localTrans))
-        } else {
+        } else if color == 2 {
+            AIChessInfo.AIChessColor = 1
             originNode!.addChildNode(loadWhiteChess(with: localTrans))
+        } else {
+            fatalError("allocate color wrong")
         }
         if MyChessInfo.myChessNum >= 5 {
             if isMeWin(AIChessInfo.IndexArray) {
@@ -366,7 +387,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             } else {
                 DispatchQueue.main.async {
                     self.setInfoLabel(with: "等待AI落子")
-                    self.setDeviceLabel(with: "AI回合")
+                    self.myTurnLabel.alpha = anotherConstants.AITurnAlpha
                 }
                 MyChessInfo.canIPlaceChess = false
                 AITurn(isFirstStep: false)
@@ -376,7 +397,8 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             MyChessInfo.canIPlaceChess = false
             DispatchQueue.main.async {
                 self.setInfoLabel(with: "等待AI落子")
-                self.setDeviceLabel(with: "AI回合")
+                self.myTurnLabel.alpha = anotherConstants.AITurnAlpha
+
             }
             AITurn(isFirstStep: false)
             return
@@ -412,6 +434,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                 
             }
             if firstClick == true && MyChessInfo.canIPlaceChess {
+                MyChessInfo.canIPlaceChess = false
                 //create and add chess anchor
                 if MyChessInfo.myChessColor == 1 {
                     let anchor = ARAnchor(name: Constants.blackChessName, transform: result.worldTransform)
@@ -421,14 +444,6 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                     ARview.session.add(anchor: anchor)
                 } else {
                     fatalError("cannot load chess when you dont have color!!")
-                }
-                //send anchor data
-                
-                
-                MyChessInfo.canIPlaceChess = false
-                
-                DispatchQueue.main.async {
-                    self.setInfoLabel(with: "棋子渲染中")
                 }
             }
             
@@ -459,7 +474,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             MyChessInfo.canIPlaceChess = true
             DispatchQueue.main.async {
                 self.setInfoLabel(with: "请您放置棋子")
-                self.setDeviceLabel(with: "您的回合")
+                self.myTurnLabel.alpha = anotherConstants.myTurnAlpha
             }
             return
         }
@@ -474,7 +489,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             MyChessInfo.canIPlaceChess = true
             DispatchQueue.main.async {
                 self.setInfoLabel(with: "请您放置棋子")
-                self.setDeviceLabel(with: "您的回合")
+                self.myTurnLabel.alpha = anotherConstants.myTurnAlpha
             }
         }
     }
@@ -492,4 +507,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
 struct anotherConstants {
     static let labelLength: CGFloat = 200
     static let labelHeight: CGFloat = 30
+    
+    static let myTurnAlpha = 1.0
+    static let AITurnAlpha = 0.1
 }
