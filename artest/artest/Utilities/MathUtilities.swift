@@ -44,7 +44,7 @@ func correctPose(with peerEuler: simd_float3, using myEuler: simd_float3) -> sim
                                     simd_float4(e13, e23, e33, 0),
                                     simd_float4(0, 0, 0, 1))
     
-    
+    //位姿校准
     //    var newPose = simd_float4x4(simd_float4(1,0,0,0),
     //                                simd_float4(0,1,0,0),
     //                                simd_float4(0,0,1,0),

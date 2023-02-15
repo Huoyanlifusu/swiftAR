@@ -258,12 +258,16 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         }
         
         if let participantAnchor = anchor as? ARParticipantAnchor {
+            DispatchQueue.main.async {
+                print("did add participant")
+            }
             node.addChildNode(loadModel())
             return
         }
     }
     
     func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+        
     }
     
     func session(_ session: ARSession, didOutputCollaborationData data: ARSession.CollaborationData) {
@@ -405,20 +409,15 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             if let participantAnchor = anchor as? ARParticipantAnchor {
                 //messageLabel.displayMessage("Established joint experience with a peer.")
                 peerTransFromARKit = participantAnchor.transform
-                print("ar data is ready")
-                //add the peer anchor to the session
-                sceneView.session.add(anchor: participantAnchor)
-            }        }
+                DispatchQueue.main.async {
+                    print("ar data is ready")
+                }
+            }
+        }
     }
     
     
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
-        for anchor in anchors {
-            if anchor.name == "peer" {
-                session.remove(anchor: anchor)
-                session.add(anchor: anchor)
-            }
-        }
     }
     
     //handler to connect
@@ -429,17 +428,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         if let collaborationData = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARSession.CollaborationData.self, from: data) {
             sceneView.session.update(with: collaborationData)
         }
-        if let worldmap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data)
-        {
-            let configuration = ARWorldTrackingConfiguration()
-            configuration.initialWorldMap = worldmap
-            configuration.planeDetection = .horizontal
-            
-            sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
-            
-            mapProvider = peer
-        }
-        
         if let discoverytoken = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NIDiscoveryToken.self, from: data) {
             peerDidShareDiscoveryToken(peer: peer, token: discoverytoken)
         }
@@ -854,5 +842,5 @@ struct Constants {
     static let ObjectName = "Object"
     static let distanceThereshold: Float = 0.4
     static let frameNum: Int = 2
-    static let weight: Float = 0.8
+    static let weight: Float = 0.9
 }

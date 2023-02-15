@@ -1,24 +1,7 @@
-//废弃
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import Foundation
-import ARKit
-import RealityKit
+//参考
+//import Foundation
+//import ARKit
+//import RealityKit
 
 //class View_Controller {
 //    @IBOutlet var arView: ARView!
