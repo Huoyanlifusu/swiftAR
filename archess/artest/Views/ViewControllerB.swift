@@ -239,6 +239,16 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             }
             return
         }
+        if let name = anchor.name, name.hasPrefix(Constants.blackChessName) {
+            DispatchQueue.main.async {
+                self.renderChess(with: anchor, and: 1)
+            }
+        }
+        if let name = anchor.name, name.hasPrefix(Constants.whiteChessName) {
+            DispatchQueue.main.async {
+                self.renderChess(with: anchor, and: 2)
+            }
+        }
     }
     
     //第一种渲染方法
@@ -294,7 +304,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                 fatalError("you dont have a correcr order")
             }
         }
-        AIInitial(with: SinglePlayerConfig.level)
+        AIInitial(with: SinglePlayerGameInfo.level)
     }
     
     func loadBlackChess(with pos: simd_float4) -> SCNNode {
@@ -329,14 +339,6 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     
     //ARSessionDelegate Monitoring NearbyObjects
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
-        for anchor in anchors {
-            if anchor.name == Constants.blackChessName {
-                renderChess(with: anchor, and: 1)
-            }
-            if anchor.name == Constants.whiteChessName {
-                renderChess(with: anchor, and: 2)
-            }
-        }
     }
     
     func renderChess(with anchor: ARAnchor, and color: Int) {
