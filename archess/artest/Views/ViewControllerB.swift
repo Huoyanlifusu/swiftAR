@@ -240,13 +240,15 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             return
         }
         if let name = anchor.name, name.hasPrefix(Constants.blackChessName) {
-            DispatchQueue.main.async {
-                self.renderChess(with: anchor, and: 1)
+            let (x,y,z) = couldRenderChess(with: anchor)
+            if x == true {
+                renderChess(xIndex: y!, yIndex: z!, color: 1)
             }
         }
         if let name = anchor.name, name.hasPrefix(Constants.whiteChessName) {
-            DispatchQueue.main.async {
-                self.renderChess(with: anchor, and: 2)
+            let (x,y,z) = couldRenderChess(with: anchor)
+            if x == true {
+                renderChess(xIndex: y!, yIndex: z!, color: 2)
             }
         }
     }
@@ -341,23 +343,15 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
     }
     
-    func renderChess(with anchor: ARAnchor, and color: Int) {
-        guard let originAnchor = ARview.anchor(for: originNode!) else {print("no origin anchor"); return }
+    func couldRenderChess(with anchor: ARAnchor) -> (couldRender: Bool, indexOfX: Int?, indexOfY: Int?) {
+        guard let originAnchor = ARview.anchor(for: originNode!) else {fatalError("no origin anchor")}
         var localTrans = originAnchor.transform.inverse * anchor.transform.columns.3
         localTrans.y = 0.055
         localTrans.x = Float(lroundf(localTrans.x * Constants.scaleFromWorldToLocal * 10)) / Float(10)
         localTrans.z = Float(lroundf(localTrans.z * Constants.scaleFromWorldToLocal * 10)) / Float(10)
         
-        //for testing
-        print("\(localTrans.x)")
-        print("\(localTrans.z)")
-        
         let indexOfX: Int = lroundf(localTrans.x * 10)
         let indexOfY: Int = lroundf(localTrans.z * 10)
-        
-        //for testing
-//            print("\(indexOfX)")
-//            print("\(indexOfY)")
         
         //判断是否出界
         if indexOfX > 4 || indexOfX < -4 || indexOfY > 4 || indexOfY < -4 {
@@ -365,7 +359,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                 self.setInfoLabel(with: "放置位置超出范围")
             }
             MyChessInfo.canIPlaceChess = true
-            return
+            return (false, nil, nil)
         }
         //判断是否已经落子
         if thereIsAChess(indexOfX: indexOfX, indexOfY: indexOfY) == true {
@@ -373,9 +367,14 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                 self.setInfoLabel(with: "该处已经有棋子")
             }
             MyChessInfo.canIPlaceChess = true
-            return
+            return (false, nil, nil)
         }
-        updatedAIIndexArray(indexOfX: indexOfX, indexOfY: indexOfY, with: color)
+        return (true, indexOfX, indexOfY)
+    }
+    
+    func renderChess(xIndex: Int, yIndex: Int, color: Int) {
+        let localTrans = simd_float4(Float(xIndex)/10.0, 0.055, Float(yIndex)/10.0, 1)
+        updatedAIIndexArray(indexOfX: xIndex, indexOfY: yIndex, with: color)
         if color == 1 {
             AIChessInfo.AIChessColor = 2
             originNode!.addChildNode(loadBlackChess(with: localTrans))
@@ -385,6 +384,10 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         } else {
             fatalError("allocate color wrong")
         }
+        updateChessInfo()
+    }
+    
+    func updateChessInfo() {
         if MyChessInfo.myChessNum >= 5 {
             if isMeWin(AIChessInfo.IndexArray) {
                 DispatchQueue.main.async {
