@@ -264,30 +264,37 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
             self.view.addSubview(self.deviceLabel)
         }
         if MyChessInfo.couldInit {
-            //randomly pick order
-            MyChessInfo.myChessOrder = randomlyPickChessOrder()
-            
-            //randomly pick color
-            MyChessInfo.myChessColor = randomlyPickChessColor()
             
             MyChessInfo.couldInit = false
-                 
+                
+            //randomly pick color & order
+            MyChessInfo.myChessColor = randomlyPickChessColor()
+            if MyChessInfo.myChessColor == 1 {
+                AIChessInfo.AIChessColor = 2
+            } else if MyChessInfo.myChessColor == 2 {
+                AIChessInfo.AIChessColor = 1
+            } else {
+                fatalError("you dont have a correct color")
+            }
+            
+            MyChessInfo.myChessOrder = randomlyPickChessOrder()
             if MyChessInfo.myChessOrder == 1 {
                 MyChessInfo.canIPlaceChess = true
                 DispatchQueue.main.async {
                     self.myTurnLabel.alpha = anotherConstants.myTurnAlpha
                     self.setInfoLabel(with: "请您落子")
                 }
-            }
-            if MyChessInfo.myChessOrder == 2 {
+            } else if MyChessInfo.myChessOrder == 2 {
                 DispatchQueue.main.async {
                     self.setInfoLabel(with: "请您等待")
                     self.myTurnLabel.alpha = anotherConstants.AITurnAlpha
                 }
                 AITurn(isFirstStep: true)
+            } else {
+                fatalError("you dont have a correcr order")
             }
         }
-        AIInitial(with: AIChessInfo.level)
+        AIInitial(with: SinglePlayerConfig.level)
     }
     
     func loadBlackChess(with pos: simd_float4) -> SCNNode {
