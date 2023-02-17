@@ -37,16 +37,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     @IBOutlet weak var infoLabel: UILabel!
     
-    
-    
-    
-    
-    
-    
-//    //eularAngle & worldPositionDetail
-//    @IBOutlet weak var eularangleLabel: UILabel!
-//    @IBOutlet weak var worldPositionLabel: UILabel!
-    
     //detail view
     @IBOutlet weak var DetailView: UIView!
 //    @IBOutlet weak var DetailUpArrow: UIImageView!
@@ -123,7 +113,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         button.setTitleColor(.white, for: .normal)
         return button
     }()
-    
+    //重启按钮
     private let restartButton: UIButton = {
         let button = UIButton(frame: CGRect(x: 0,
                                             y: 0,
@@ -142,7 +132,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         button.setTitleColor(.white, for: .normal)
         return button
     }()
-    
+    //文本信息
     private let myTurnLabel: UILabel = {
         let label = UILabel(frame: CGRect(x: 0,
                                           y: 0,
@@ -189,14 +179,12 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     
     
+    
+    //继承重写
     override func viewDidLoad() {
         super.viewDidLoad()
-//        view.addSubview(imageView)
         startup()
     }
-    
-    
-    
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -226,8 +214,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         view.addSubview(exitButton)
         view.addSubview(restartButton)
         
-        //show feature points in ar experience, usually not used
-        //sceneView.debugOptions = ARSCNDebugOptions.showFeaturePoints
         
         setupCoachingOverlay()
         
@@ -388,12 +374,13 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     
     func restart() {
         sendCodeToPeer(with: 8)
-        DispatchQueue.main.async {
-            resetMyChessInfo()
-            self.firstClick = false
-            self.canPlaceBoard = true
-            self.originNode = nil
-        }
+        //参数重置
+        resetMyChessInfo()
+        
+        firstClick = false
+        canPlaceBoard = true
+        
+        originNode = nil
         
         
         let configuration = ARWorldTrackingConfiguration()
@@ -405,11 +392,12 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     }
     
     func restartByCode() {
-        DispatchQueue.main.async {
-            resetMyChessInfo()
-            self.firstClick = false
-            self.canPlaceBoard = true
-        }
+        resetMyChessInfo()
+        
+        firstClick = false
+        canPlaceBoard = true
+        //AR相关内存清空
+        originNode = nil
         
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
@@ -466,6 +454,11 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         //渲染棋盘
         if let name = anchor.name, name.hasPrefix(Constants.chessBoardName) {
             node.addChildNode(renderChessBoard())
+            let ambientLight = SCNLight()
+            ambientLight.type = .ambient
+            let ambientNode = SCNNode()
+            ambientNode.light = ambientLight
+            node.addChildNode(ambientNode)
             DispatchQueue.main.async {
                 self.infoLabel.text = "渲染结束"
             }
@@ -473,6 +466,11 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         }
         if let name = anchor.name, name.hasPrefix(Constants.peerChessBoardName) {
             node.addChildNode(renderChessBoard())
+            let ambientLight = SCNLight()
+            ambientLight.type = .ambient
+            let ambientNode = SCNNode()
+            ambientNode.light = ambientLight
+            node.addChildNode(ambientNode)
             DispatchQueue.main.async {
                 self.infoLabel.text = "渲染结束"
             }
@@ -650,23 +648,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         node.load()
         return node
     }
-    
-    
-    //decrepted
-//    func loadBlackChess() -> SCNNode {
-//        guard let url = Bundle.main.url(forResource: "blackChess", withExtension: "usdz") else { fatalError("can not find resource url") }
-//        guard let node = SCNReferenceNode(url: url) else { fatalError("cannot establish black chess node") }
-//        node.load()
-//        return node
-//    }
-//
-//    func loadWhiteChess() -> SCNNode {
-//        guard let url = Bundle.main.url(forResource: "whiteChess", withExtension: "usdz") else { fatalError("can not find resource url") }
-//        guard let node = SCNReferenceNode(url: url) else { fatalError("cannot establish black chess node") }
-//        node.load()
-//        return node
-//    }
-        
     
     func session(_ session: ARSession, didOutputCollaborationData data: ARSession.CollaborationData) {
         guard let multipeerSession = mpc else { return }
@@ -857,7 +838,9 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                     self.setDeviceLabel(with: "游戏结束！")
                 }
                 return
-                
+            case 8:
+                restartByCode()
+                return
             default:
                 return
             }
@@ -949,14 +932,18 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             else {
                 return
             }
-            guard let result = sceneView.session.raycast(arRayCastQuery).first
+            guard let rayCastResult = sceneView.session.raycast(arRayCastQuery).first
             else {
                 return
             }
             
+            //trying to use SceneKit hitTest
+//            guard let hitTestResult = sceneView.hitTest(location) else { return }
+            
+            
             if firstClick == false && canPlaceBoard {
                 //create and add chessboard anchor
-                let anchor = ARAnchor(name: Constants.chessBoardName, transform: result.worldTransform)
+                let anchor = ARAnchor(name: Constants.chessBoardName, transform: rayCastResult.worldTransform)
                 sceneView.session.add(anchor: anchor)
                 guard let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
                 else { fatalError("can't encode anchor") }
@@ -972,14 +959,16 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     //            guard let eulerData = try? JSONEncoder().encode(cam.eulerAngles) else { fatalError("dont have your cam") }
     //            self.mpc?.sendDataToAllPeers(data: eulerData)
                 
-                let pos = cam.transform.inverse * result.worldTransform.columns.3
+                let pos = cam.transform.inverse * rayCastResult.worldTransform.columns.3
                 guard let posData = try? JSONEncoder().encode(pos) else { fatalError("cannot encode simd_float3x3") }
                 self.mpc?.sendDataToAllPeers(data: posData)
                 
                 
                 //有时arkit会多次检测tap，防止程序崩溃，同时保证此时不会产生新的board
                 canPlaceBoard = false
-                let _ = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false, block: { timer in
+                let _ = Timer.scheduledTimer(withTimeInterval: 0.3,
+                                             repeats: false,
+                                             block: { timer in
                     self.firstClick = true
                 })
                 
@@ -989,22 +978,25 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
                 //create and add chess anchor
                 let anchor: ARAnchor?
                 if MyChessInfo.myChessColor == 1 {
-                    anchor = ARAnchor(name: Constants.blackChessName, transform: result.worldTransform)
+                    anchor = ARAnchor(name: Constants.blackChessName,
+                                      transform: rayCastResult.worldTransform)
                 } else if MyChessInfo.myChessColor == 2 {
-                    anchor = ARAnchor(name: Constants.whiteChessName, transform: result.worldTransform)
+                    anchor = ARAnchor(name: Constants.whiteChessName,
+                                      transform: rayCastResult.worldTransform)
                 } else {
                     fatalError("can not touch before choosing a color")
                 }
                 //add anchor in scene
                 sceneView.session.add(anchor: anchor!)
-                guard let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: anchor!, requiringSecureCoding: true)
+                guard let anchorData = try? NSKeyedArchiver.archivedData(withRootObject: anchor!,
+                                                                         requiringSecureCoding: true)
                 else { fatalError("can't encode anchor") }
                 //send anchor data
                 self.mpc?.sendDataToAllPeers(data: anchorData)
                 
                 guard let cam = self.camera else { return }
                 //send pos data
-                let pos = cam.transform.inverse * result.worldTransform.columns.3
+                let pos = cam.transform.inverse * rayCastResult.worldTransform.columns.3
                 guard let posData = try? JSONEncoder().encode(pos) else { fatalError("cannot encode simd_float3x3") }
                 self.mpc?.sendDataToAllPeers(data: posData)
                 
@@ -1040,18 +1032,6 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
     func isNearby(_ distance: Float) -> Bool {
         return distance < Constants.distanceThereshold
     }
-
-    //decrepted
-//    func loadRobot() -> SCNNode {
-//        let url = URL(fileURLWithPath: "Materials/biped_robot.usdz")
-//        let node = SCNReferenceNode(url: url)!
-//        node.load()
-//        return node
-//    }
-    
-    
-    
-    
     
     //update visualization information
     func visualisationUpdate(with peer: NINearbyObject) {
