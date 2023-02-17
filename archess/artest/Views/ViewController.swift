@@ -539,6 +539,7 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
             MyChessInfo.canIPlaceChess = true
             return
         }
+        
         if color == 1 {
             originNode!.addChildNode(loadBlackChess(with: localTrans))
         } else {
@@ -633,7 +634,14 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         node.simdTransform.columns.3 = pos
         node.simdScale = simd_float3(0.5,0.2,0.5)
         
+        let directionalLight = SCNLight()
+        directionalLight.type = .directional
+        let lightNode = SCNNode()
+        lightNode.light = directionalLight
+        lightNode.position = SCNVector3(x: pos.x, y: pos.y, z: pos.z) + SCNVector3(x: 0, y: 1, z: 0)
+        
         node.load()
+        node.addChildNode(lightNode)
         
         return node
     }
@@ -645,7 +653,15 @@ class ViewController: UIViewController, NISessionDelegate, ARSessionDelegate, AR
         node.simdTransform.columns.3 = pos
         node.simdScale = simd_float3(0.5,0.2,0.5)
         
+        let directionalLight = SCNLight()
+        directionalLight.type = .directional
+        let lightNode = SCNNode()
+        lightNode.light = directionalLight
+        lightNode.position = SCNVector3(x: pos.x, y: pos.y, z: pos.z) + SCNVector3(x: 0, y: 1, z: 0)
+        
         node.load()
+        node.addChildNode(lightNode)
+        
         return node
     }
     
@@ -1167,4 +1183,10 @@ struct Constants {
     //UI界面参数
     static let myTurnAlpha = 1.0
     static let peerTurnAlpha = 0.2
+}
+
+extension SCNVector3 {
+    static func + (v1: SCNVector3, v2: SCNVector3) -> SCNVector3 {
+        return SCNVector3(x: v1.x + v2.x, y: v1.y + v2.y, z: v1.z + v2.z)
+    }
 }
