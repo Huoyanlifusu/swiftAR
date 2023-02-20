@@ -19,7 +19,7 @@ extension ViewController: ARCoachingOverlayViewDelegate {
     }
     
     func coachingOverlayViewDidRequestSessionReset() {
-        resetTracking()
+        restart()
     }
     
     func setActivatesAutomatically() {
@@ -51,3 +51,4 @@ extension ViewController: ARCoachingOverlayViewDelegate {
     
     
 }
+

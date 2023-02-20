@@ -236,6 +236,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
         if let name = anchor.name, name.hasPrefix(Constants.chessBoardName) {
             DispatchQueue.main.async {
                 self.renderChessBoard(for: node)
+                print("\(node.simdPosition)")
             }
             return
         }
@@ -251,6 +252,7 @@ class ViewControllerB: UIViewController, ARSessionDelegate, ARSCNViewDelegate {
                 renderChess(xIndex: y!, yIndex: z!, color: 2)
             }
         }
+        
     }
     
     //第一种渲染方法
