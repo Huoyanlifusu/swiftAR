@@ -6,14 +6,33 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct ContentView: View {
+    @State private var isOn: Bool = false
+    @State private var region = MKCoordinateRegion(center:
+                                                    CLLocationCoordinate2D(latitude: 37.334_900,
+                                                                           longitude: -122.009_020),
+                                                   latitudinalMeters: 300,
+                                                   longitudinalMeters: 300)
+    
     var body: some View {
         VStack {
             Image(systemName: "globe")
                 .imageScale(.large)
                 .foregroundColor(.accentColor)
-            Text("Hello, world!")
+            Toggle(isOn: $isOn) {
+                Text("hello world")
+                    .bold()
+                    .italic()
+            }
+            Map(coordinateRegion: $region)
+            Button(action: {
+            }) {
+                Text("click me")
+                }
+                .foregroundColor(.brown)
+                
         }
         .padding()
     }
